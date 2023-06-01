@@ -163,16 +163,32 @@ pub const Compiler = struct {
     }
 
     fn factor(self: *Self) !void {
-        try self.primary();
+        if (self.check(.Star) or self.check(.Slash)) {
+            while (self.match(.Star) or self.match(.Slash)) {
+                const op = self.previous.kind;
+                try self.factor();
+                try self.factor();
+
+                switch (op) {
+                    .Star => try self.chunk().writeOp(.Mul),
+                    .Slash => try self.chunk().writeOp(.Div),
+                    else => unreachable,
+                }
+            }
+        } else {
+            try self.primary();
+        }
     }
 
-    fn primary(self: *Self) !void {
+    fn primary(self: *Self) CompilerErr!void {
         switch (self.current.kind) {
             .Number => {
                 const float = try std.fmt.parseFloat(f32, self.current.lexeme);
                 self.advance();
                 try self.chunk().writeConstant(Value.fromNumber(float));
             },
+
+            .LeftParen => try self.expression(),
 
             else => return CompilerErr.InvalidExpression,
         }
