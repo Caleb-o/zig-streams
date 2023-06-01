@@ -14,7 +14,7 @@ pub const TokenKind = enum {
     Star,
     Slash,
     Percent,
-
+    Equal,
     StarStar,
 
     Bang,
@@ -36,6 +36,7 @@ pub const TokenKind = enum {
     False,
     True,
     If,
+    Let,
     Nil,
     Not,
     Print,
@@ -94,7 +95,7 @@ pub const Lexer = struct {
             '%' => self.makeToken(.Percent),
 
             '!' => self.makeToken(.Bang),
-            '=' => self.makeToken(if (self.match('=')) .EqualEqual else .Error),
+            '=' => self.makeToken(if (self.match('=')) .EqualEqual else .Equal),
             '<' => self.makeToken(if (self.match('=')) .LessEqual else .Less),
             '>' => self.makeToken(if (self.match('=')) .GreaterEqual else .Greater),
 
@@ -225,6 +226,7 @@ pub const Lexer = struct {
             'e' => self.checkKeyword(1, "lse", .Else),
             'f' => self.checkKeyword(1, "alse", .False),
             'i' => self.checkKeyword(1, "f", .If),
+            'l' => self.checkKeyword(1, "et", .Let),
             'n' => if (self.start.len == 1) .Identifier else return switch (self.start[1]) {
                 'i' => self.checkKeyword(2, "l", .Nil),
                 'o' => self.checkKeyword(2, "t", .Not),

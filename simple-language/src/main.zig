@@ -26,7 +26,6 @@ pub fn main() !void {
 
     var compiler = Compiler.init(file_contents, &vm);
     var func = try compiler.compile();
-    func.chunk.disassemble("CODE");
 
     vm.start(func);
 }

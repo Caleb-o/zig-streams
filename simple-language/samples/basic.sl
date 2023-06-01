@@ -1,1 +1,5 @@
-(print (+ (* 2 3) 3))
+(let a = 4)
+(let b = + a 2)
+
+(print a)
+(print b)

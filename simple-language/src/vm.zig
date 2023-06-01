@@ -93,6 +93,13 @@ pub const VM = struct {
         try self.stack.append(value);
     }
 
+    fn peek(self: *Self, depth: usize) Value {
+        if (depth >= self.stack.items.len) {
+            std.debug.panic("Peeking invalid index: {d}\n", .{depth});
+        }
+        return self.stack.items[self.stack.items.len - 1 - depth];
+    }
+
     fn pop(self: *Self) !Value {
         if (self.stack.items.len == 0) {
             std.debug.print("Error: Stack underflow!\n", .{});
@@ -104,7 +111,7 @@ pub const VM = struct {
 
     // TODO: Consider a status return instead
     fn run(self: *Self) !void {
-        defer std.debug.print("\nDone!\n", .{});
+        defer std.debug.print("Done!\n", .{});
         while (self.running) {
             const instruction = @intToEnum(ByteCode, self.readByte());
             switch (instruction) {
@@ -115,7 +122,21 @@ pub const VM = struct {
                 .Mul => try self.binaryOp('*'),
                 .Div => try self.binaryOp('/'),
 
-                .Print => (try self.pop()).print(),
+                .GetLocal => {
+                    const index = self.readByte();
+
+                    try self.push(self.stack.items[self.currentFrame().slot + index]);
+                },
+
+                .SetLocal => {
+                    const index = self.readByte();
+                    self.stack.items[self.currentFrame().slot + index] = self.peek(0);
+                },
+
+                .Print => {
+                    (try self.pop()).print();
+                    std.debug.print("\n", .{});
+                },
 
                 .Return => {
                     _ = self.frames.pop();
