@@ -24,7 +24,7 @@ pub const ByteCode = enum(u8) {
     Nil,
 
     Return,
-    Print, // Count
+    Print,
 };
 
 pub const Chunk = struct {
@@ -88,7 +88,8 @@ pub const Chunk = struct {
     }
 
     fn decode(self: *Self, offset: u32) u32 {
-        return switch (@intToEnum(ByteCode, self.code.items[@intCast(usize, offset)])) {
+        const instruction = @intToEnum(ByteCode, self.code.items[@intCast(usize, offset)]);
+        return switch (instruction) {
             .ConstantByte => constantInstruction("OP_CONSTANT_BYTE", offset, self),
             .Pop => simpleInstruction("OP_POP", offset),
 
@@ -104,9 +105,10 @@ pub const Chunk = struct {
             .True => simpleInstruction("OP_TRUE", offset),
             .False => simpleInstruction("OP_FALSE", offset),
 
+            .Print => simpleInstruction("OP_PRINT", offset),
             .Return => simpleInstruction("OP_RETURN", offset),
 
-            else => std.debug.panic("Undefined: {}\n", .{self}),
+            else => std.debug.panic("Undefined: {}\n", .{instruction}),
         };
     }
 

@@ -75,16 +75,18 @@ pub const Compiler = struct {
     }
 
     pub fn compile(self: *Self) CompilerErr!*Function {
-        var scope = self.createFunction(
+        var scope = self.openCompiler(
             null,
             try self.takeString("script"),
             0,
         );
         self.func = &scope;
 
-        try self.expression();
+        while (!self.match(.Eof)) {
+            try self.declaration();
+        }
 
-        return self.func.end(self.vm);
+        return try self.closeCompiler();
     }
 
     // TODO: Make this into the string object or manage strings some other way
@@ -94,8 +96,18 @@ pub const Compiler = struct {
         return str;
     }
 
-    fn createFunction(self: *Self, enclosing: ?*FunctionCompiler, identifier: []const u8, depth: u32) FunctionCompiler {
+    fn openCompiler(self: *Self, enclosing: ?*FunctionCompiler, identifier: []const u8, depth: u32) FunctionCompiler {
         return FunctionCompiler.create(self.vm.allocator, enclosing, identifier, depth);
+    }
+
+    fn closeCompiler(self: *Self) !*Function {
+        try self.chunk().writeOp(.Return);
+
+        const func = try self.func.end(self.vm);
+        if (self.func.enclosing) |enclosing| {
+            self.func = enclosing;
+        }
+        return func;
     }
 
     fn err(self: *Self, comptime msg: []const u8) void {
@@ -138,10 +150,33 @@ pub const Compiler = struct {
         return false;
     }
 
-    fn expression(self: *Self) !void {
-        try self.consume(.LeftParen, "Expect '(' to start expression");
+    fn declaration(self: *Self) !void {
+        try self.statement();
+    }
+
+    fn statement(self: *Self) !void {
+        try self.consume(.LeftParen, "Expect '(' to start statement");
+        switch (self.current.kind) {
+            .Print => try self.printStmt(),
+            else => try self.expression(),
+        }
+        try self.consume(.RightParen, "Expect ')' to end statement");
+    }
+
+    fn printStmt(self: *Self) !void {
+        self.advance();
+        try self.groupedExpression();
+        try self.chunk().writeOp(.Print);
+    }
+
+    fn groupedExpression(self: *Self) !void {
+        self.advance();
         try self.term();
-        try self.consume(.RightParen, "Expect ')' to end expression");
+        try self.consume(.RightParen, "Expect ')' to end grouped expression");
+    }
+
+    fn expression(self: *Self) !void {
+        try self.term();
     }
 
     fn term(self: *Self) !void {
@@ -188,7 +223,7 @@ pub const Compiler = struct {
                 try self.chunk().writeConstant(Value.fromNumber(float));
             },
 
-            .LeftParen => try self.expression(),
+            .LeftParen => try self.groupedExpression(),
 
             else => return CompilerErr.InvalidExpression,
         }

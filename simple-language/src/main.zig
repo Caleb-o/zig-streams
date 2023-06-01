@@ -21,11 +21,14 @@ pub fn main() !void {
     const file_contents = try readFile(allocator, args[1]);
     std.debug.print("Loaded file '{s}' with {d} bytes\n", .{ args[1], file_contents.len });
 
-    var vm = VM.create(allocator);
+    var vm = try VM.init(allocator);
+    defer vm.deinit();
 
     var compiler = Compiler.init(file_contents, &vm);
     var func = try compiler.compile();
     func.chunk.disassemble("CODE");
+
+    vm.start(func);
 }
 
 fn readFile(allocator: Allocator, file_name: []const u8) ![]u8 {

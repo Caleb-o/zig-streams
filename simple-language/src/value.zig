@@ -24,16 +24,16 @@ pub const Value = union(enum) {
     }
 
     // Helpers
-    pub fn isNil(self: *Self) bool {
-        return self == .nil;
+    pub fn isNil(self: *const Self) bool {
+        return self.* == .nil;
     }
 
-    pub fn isNumber(self: *Self) bool {
-        return self == .number;
+    pub fn isNumber(self: *const Self) bool {
+        return self.* == .number;
     }
 
-    pub fn isBoolean(self: *Self) bool {
-        return self == .boolean;
+    pub fn isBoolean(self: *const Self) bool {
+        return self.* == .boolean;
     }
 
     // -- Casts
@@ -43,17 +43,17 @@ pub const Value = union(enum) {
         return self.nil;
     }
 
-    pub fn asNumber(self: *Self) f32 {
+    pub fn asNumber(self: *const Self) f32 {
         assert(self.isNumber());
         return self.number;
     }
 
-    pub fn asBoolean(self: *Self) bool {
+    pub fn asBoolean(self: *const Self) bool {
         assert(self.isBoolean());
         return self.boolean;
     }
 
-    pub fn print(self: *Self) void {
+    pub fn print(self: *const Self) void {
         const printd = std.debug.print;
         switch (self.*) {
             .nil => printd("nil", .{}),
