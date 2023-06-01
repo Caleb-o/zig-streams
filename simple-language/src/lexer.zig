@@ -38,6 +38,7 @@ pub const TokenKind = enum {
     If,
     Nil,
     Not,
+    Print,
     Return,
 
     Error,
@@ -93,7 +94,7 @@ pub const Lexer = struct {
             '%' => self.makeToken(.Percent),
 
             '!' => self.makeToken(.Bang),
-            '=' => self.makeToken(if (self.match('=')) .EqualEqual else .Equal),
+            '=' => self.makeToken(if (self.match('=')) .EqualEqual else .Error),
             '<' => self.makeToken(if (self.match('=')) .LessEqual else .Less),
             '>' => self.makeToken(if (self.match('=')) .GreaterEqual else .Greater),
 
@@ -229,6 +230,7 @@ pub const Lexer = struct {
                 'o' => self.checkKeyword(2, "t", .Not),
                 else => .Identifier,
             },
+            'p' => self.checkKeyword(1, "rint", .Print),
             'r' => self.checkKeyword(1, "eturn", .Return),
             't' => self.checkKeyword(1, "rue", .True),
             else => .Identifier,
