@@ -36,6 +36,10 @@ pub const Value = union(enum) {
         return self.* == .boolean;
     }
 
+    pub fn isObject(self: *const Self) bool {
+        return self.* == .object;
+    }
+
     // -- Casts
     // NOTE: Dumb but for completeness
     pub fn asNil(self: Self) void {
@@ -53,13 +57,18 @@ pub const Value = union(enum) {
         return self.boolean;
     }
 
+    pub fn asObject(self: *const Self) *Object {
+        assert(self.isObject());
+        return self.object;
+    }
+
     pub fn print(self: *const Self) void {
         const printd = std.debug.print;
         switch (self.*) {
             .nil => printd("nil", .{}),
             .number => |v| printd("{d}", .{v}),
             .boolean => |v| printd("{}", .{v}),
-            else => unreachable,
+            .object => printd("<object>", .{}),
         }
     }
 };

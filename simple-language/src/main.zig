@@ -21,11 +21,22 @@ pub fn main() !void {
     const file_contents = try readFile(allocator, args[1]);
     std.debug.print("Loaded file '{s}' with {d} bytes\n", .{ args[1], file_contents.len });
 
-    var vm = try VM.init(allocator);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var galloc = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked == .leak) std.debug.panic("LEAKED\n", .{});
+    }
+
+    var vm = VM.create();
+    try vm.init(galloc);
     defer vm.deinit();
 
     var compiler = Compiler.init(file_contents, &vm);
-    var func = try compiler.compile();
+    var func = compiler.compile() catch |err| {
+        std.debug.print("Compiler Error: {s}\n", .{@errorName(err)});
+        return;
+    };
 
     vm.start(func);
 }

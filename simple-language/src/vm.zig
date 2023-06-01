@@ -11,6 +11,9 @@ const objects = @import("object.zig");
 const Object = objects.Object;
 const Function = objects.Function;
 const Value = @import("value.zig").Value;
+const GC = @import("gc.zig").GC;
+
+const StringMap = std.AutoArrayHashMap(u32, *objects.String);
 
 const stack_count = 256;
 const stack_size = stack_count * @sizeOf(Value);
@@ -46,28 +49,50 @@ pub const VM = struct {
     running: bool,
     fba: FixedBufferAllocator,
 
+    gc: GC,
+    strings: StringMap,
+    greyList: ArrayList(*Object),
+
     frames: ArrayList(CallFrame),
     stack: ArrayList(Value),
 
     const Self = @This();
 
-    pub fn init(allocator: Allocator) !Self {
-        var fba = FixedBufferAllocator.init(&stack_buffer);
-        var stack_alloc = fba.allocator();
-
+    pub fn create() Self {
         return .{
-            .allocator = allocator,
+            .allocator = undefined,
             .objects = null,
-            .running = true,
             .ip = 0,
-            .fba = fba,
-            .frames = ArrayList(CallFrame).init(allocator),
-            .stack = try ArrayList(Value).initCapacity(stack_alloc, stack_count),
+            .running = false,
+            .fba = undefined,
+            .gc = undefined,
+            .strings = undefined,
+            .greyList = undefined,
+            .frames = undefined,
+            .stack = undefined,
         };
     }
 
+    pub fn init(self: *Self, allocator: Allocator) !void {
+        var fba = FixedBufferAllocator.init(&stack_buffer);
+        const stackAllocator = fba.allocator();
+
+        self.gc = GC.init(allocator, self);
+        self.allocator = self.gc.allocator();
+
+        self.stack = try ArrayList(Value).initCapacity(stackAllocator, stack_count);
+        self.frames = try ArrayList(CallFrame).initCapacity(allocator, 4);
+        self.greyList = ArrayList(*Object).init(std.heap.page_allocator);
+
+        self.strings = StringMap.init(allocator);
+    }
+
     pub fn deinit(self: *Self) void {
-        self.stack.deinit();
+        self.cleanupWithGC();
+
+        self.greyList.deinit();
+        self.frames.deinit();
+        self.strings.deinit();
     }
 
     pub fn start(self: *Self, function: *Function) void {
@@ -79,6 +104,14 @@ pub const VM = struct {
         self.run() catch {
             std.debug.print("Failed to run program!\n", .{});
         };
+    }
+
+    fn cleanupWithGC(self: *Self) void {
+        self.frames.clearRetainingCapacity();
+        self.greyList.clearRetainingCapacity();
+        self.strings.clearRetainingCapacity();
+
+        self.gc.collectGarbage() catch unreachable;
     }
 
     fn callFunc(self: *Self, function: *Function) !void {

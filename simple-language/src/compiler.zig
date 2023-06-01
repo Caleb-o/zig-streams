@@ -70,9 +70,9 @@ const FunctionCompiler = struct {
     pub fn end(self: *Self, vm: *VM) !*Function {
         self.locals.deinit();
 
-        const function = objects.Function.init(
+        const function = try objects.Function.init(
             vm,
-            self.identifier,
+            try objects.String.fromLiteral(vm, self.identifier),
             self.arity,
             self.chunk,
         );
@@ -123,7 +123,7 @@ pub const Compiler = struct {
     pub fn compile(self: *Self) CompilerErr!*Function {
         var scope = self.openCompiler(
             null,
-            try self.takeString("script"),
+            "script",
             0,
         );
         self.func = &scope;
@@ -143,7 +143,12 @@ pub const Compiler = struct {
     }
 
     fn openCompiler(self: *Self, enclosing: ?*FunctionCompiler, identifier: []const u8, depth: u8) FunctionCompiler {
-        return FunctionCompiler.create(self.vm.allocator, enclosing, identifier, depth);
+        return FunctionCompiler.create(
+            self.vm.allocator,
+            enclosing,
+            identifier,
+            depth,
+        );
     }
 
     fn closeCompiler(self: *Self) !*Function {
@@ -154,18 +159,19 @@ pub const Compiler = struct {
             self.func = enclosing;
         }
 
-        if (debug.PRINT_CHUNK) {
-            func.chunk.disassemble(func.identifier);
+        if (debug.print_chunk) {
+            func.chunk.disassemble(func.identifier.chars);
         }
 
         return func;
     }
 
     fn err(self: *Self, comptime msg: []const u8) void {
-        std.debug.print("[Error:Compiler] {s} [{}:{}]\n", .{
+        std.debug.print("[Error:Compiler] {s} '{s}' [{}:{}]\n", .{
             msg,
-            self.current.line,
-            self.current.column,
+            self.previous.lexeme,
+            self.previous.line,
+            self.previous.column,
         });
     }
 
