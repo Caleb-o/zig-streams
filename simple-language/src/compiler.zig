@@ -166,8 +166,8 @@ pub const Compiler = struct {
         if (self.check(.Star) or self.check(.Slash)) {
             while (self.match(.Star) or self.match(.Slash)) {
                 const op = self.previous.kind;
-                try self.factor();
-                try self.factor();
+                try self.primary();
+                try self.primary();
 
                 switch (op) {
                     .Star => try self.chunk().writeOp(.Mul),
