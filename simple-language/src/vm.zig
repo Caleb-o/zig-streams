@@ -50,7 +50,6 @@ pub const VM = struct {
 
     ip: usize,
     running: bool,
-    fba: FixedBufferAllocator,
 
     gc: GC,
     strings: StringMap,
@@ -68,7 +67,6 @@ pub const VM = struct {
             .objects = null,
             .ip = 0,
             .running = true,
-            .fba = undefined,
             .gc = undefined,
             .strings = undefined,
             .globals = undefined,

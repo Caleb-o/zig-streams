@@ -22,7 +22,7 @@ pub fn main() !void {
     std.debug.print("Loaded file '{s}'\n", .{args[1]});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var galloc = gpa.allocator();
+    const galloc = gpa.allocator();
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) std.debug.panic("LEAKED\n", .{});
@@ -32,7 +32,7 @@ pub fn main() !void {
     try vm.init(galloc);
     defer vm.deinit();
 
-    var compiler = Compiler.init(file_contents, &vm);
+    var compiler = Compiler.init(file_contents, &vm, allocator);
     var func = compiler.compile() catch |err| {
         std.debug.print("Compiler Error: {s}\n", .{@errorName(err)});
         return;

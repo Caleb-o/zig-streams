@@ -35,6 +35,15 @@ const Local = struct {
 
     const Self = @This();
 
+    pub fn default() Self {
+        return .{
+            .identifier = Token.artificial(),
+            .index = 0,
+            .depth = 0,
+            .initialised = false,
+        };
+    }
+
     pub fn create(identifier: Token, index: u8, depth: u8) Self {
         return .{
             .identifier = identifier,
@@ -52,7 +61,8 @@ const FunctionCompiler = struct {
     identifier: []const u8,
     arity: u8,
     chunk: Chunk,
-    locals: ArrayList(Local),
+    locals: []Local,
+    localCount: usize,
 
     const Self = @This();
 
@@ -63,14 +73,12 @@ const FunctionCompiler = struct {
             .identifier = identifier,
             .arity = 0,
             .chunk = Chunk.init(allocator),
-            // TODO: Move to stack
-            .locals = ArrayList(Local).init(allocator),
+            .locals = &[_]Local{Local.default()} ** 256,
+            .localCount = 0,
         };
     }
 
     pub fn end(self: *Self, vm: *VM) !*Function {
-        self.locals.deinit();
-
         const function = try objects.Function.init(
             vm,
             try objects.String.fromLiteral(vm, self.identifier),
@@ -81,15 +89,17 @@ const FunctionCompiler = struct {
     }
 
     pub fn addLocal(self: *Self, identifier: Token) !void {
-        try self.locals.append(Local.create(
+        self.locals[self.localCount] = Local.create(
             identifier,
-            @intCast(u8, self.locals.items.len),
+            @intCast(u8, self.localCount),
             self.depth,
-        ));
+        );
+        self.localCount += 1;
     }
 
     pub fn findLocal(self: *Self, identifier: Token) ?*Local {
-        for (self.locals.items) |*local| {
+        for (0..self.localCount) |idx| {
+            const local = &self.locals[idx];
             // TODO: Consider depth?
             if (std.mem.eql(u8, local.identifier.lexeme, identifier.lexeme)) {
                 return local;
@@ -99,7 +109,8 @@ const FunctionCompiler = struct {
     }
 
     pub fn findLocalInScope(self: *Self, identifier: Token) ?*Local {
-        for (self.locals.items) |*local| {
+        for (0..self.localCount) |idx| {
+            const local = &self.locals[idx];
             if (local.depth < self.depth) break;
             if (local.depth == self.depth and std.mem.eql(u8, local.identifier.lexeme, identifier.lexeme)) {
                 return local;
@@ -116,10 +127,11 @@ pub const Compiler = struct {
 
     func: *FunctionCompiler,
     vm: *VM,
+    arena: Allocator,
 
     const Self = @This();
 
-    pub fn init(source: []const u8, vm: *VM) Self {
+    pub fn init(source: []const u8, vm: *VM, arena: Allocator) Self {
         var l = Lexer.init(source);
         var t = l.getToken();
         return .{
@@ -128,6 +140,7 @@ pub const Compiler = struct {
             .current = t,
             .func = undefined,
             .vm = vm,
+            .arena = arena,
         };
     }
 
@@ -153,9 +166,11 @@ pub const Compiler = struct {
         return str;
     }
 
-    fn openCompiler(self: *Self, enclosing: ?*FunctionCompiler, identifier: []const u8, depth: u8) FunctionCompiler {
+    inline fn openCompiler(self: *Self, enclosing: ?*FunctionCompiler, identifier: []const u8, depth: u8) FunctionCompiler {
+        // NOTE: Using the arena resolves a strange lifetime issue
+        // Chunks live from start to end anyway, so an arena is still viable
         return FunctionCompiler.create(
-            self.vm.allocator,
+            self.arena,
             enclosing,
             identifier,
             depth,
@@ -274,8 +289,6 @@ pub const Compiler = struct {
         const identifier = self.current;
         try self.consume(.Identifier, "Expect identifier after let");
         try self.declareVariable(identifier);
-
-        try self.consume(.Equal, "Expect '=' after let identifier");
         try self.expression();
 
         // Tell compiler the variable is ready for use
@@ -285,8 +298,6 @@ pub const Compiler = struct {
     fn globalDeclaration(self: *Self) !void {
         const identifier = self.current;
         try self.consume(.Identifier, "Expect identifier after global");
-
-        try self.consume(.Equal, "Expect '=' after global identifier");
         try self.expression();
 
         const index = try self.identifierConstant(&identifier);
