@@ -96,6 +96,16 @@ const FunctionCompiler = struct {
         }
         return null;
     }
+
+    pub fn findLocalInScope(self: *Self, identifier: Token) ?*Local {
+        for (self.locals.items) |*local| {
+            if (local.depth < self.depth) break;
+            if (local.depth == self.depth and std.mem.eql(u8, local.identifier.lexeme, identifier.lexeme)) {
+                return local;
+            }
+        }
+        return null;
+    }
 };
 
 pub const Compiler = struct {
@@ -208,15 +218,19 @@ pub const Compiler = struct {
     }
 
     fn declareVariable(self: *Self, identifier: Token) !void {
-        if (self.func.findLocal(identifier)) |_| {
-            self.err("Variable already declared");
-            return CompilerErr.BindingAlreadyDefined;
+        if (self.func.findLocalInScope(identifier)) |_| {
+            return;
         }
         try self.func.addLocal(identifier);
     }
 
     fn defineVariable(self: *Self, identifier: Token) !void {
         if (self.func.findLocal(identifier)) |local| {
+            if (local.initialised) {
+                try self.chunk().writeOpByte(.SetLocal, local.index);
+                return;
+            }
+
             local.initialised = true;
             return;
         }
