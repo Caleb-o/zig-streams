@@ -267,10 +267,15 @@ pub const VM = struct {
                 },
 
                 .Return => {
-                    _ = self.frames.pop();
+                    const result = try self.pop();
+                    const oldFrame = self.frames.pop();
+
                     if (self.frames.items.len == 0) {
                         return;
                     }
+
+                    try self.stack.resize(oldFrame.slot);
+                    try self.push(result);
                 },
 
                 .True => try self.push(Value.fromBoolean(true)),

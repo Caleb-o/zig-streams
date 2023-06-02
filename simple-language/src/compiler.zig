@@ -179,7 +179,11 @@ pub const Compiler = struct {
     }
 
     fn closeCompiler(self: *Self) !*Function {
-        try self.chunk().writeOps(.Nil, .Return);
+        if (self.chunk().code.items.len > 0) {
+            try self.chunk().writeOp(.Return);
+        } else {
+            try self.chunk().writeOps(.Nil, .Return);
+        }
 
         const func = try self.func.end(self.vm);
         if (self.func.enclosing) |enclosing| {
