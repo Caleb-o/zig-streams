@@ -102,7 +102,7 @@ pub const VM = struct {
         self.globals.deinit();
     }
 
-    pub fn start(self: *Self, function: *Function) void {
+    pub fn start(self: *Self, function: *Function) !void {
         self.callFunc(function) catch {
             std.debug.print("Could not call function!\n", .{});
             return;
@@ -114,6 +114,7 @@ pub const VM = struct {
     }
 
     fn cleanupWithGC(self: *Self) void {
+        self.stack.clearRetainingCapacity();
         self.frames.clearRetainingCapacity();
         self.greyList.clearRetainingCapacity();
         self.strings.clearRetainingCapacity();
@@ -156,6 +157,7 @@ pub const VM = struct {
             const instruction = @intToEnum(ByteCode, self.readByte());
             switch (instruction) {
                 .ConstantByte => try self.push(self.readConstant()),
+                .Pop => _ = try self.pop(),
 
                 .Add => try self.binaryOp('+'),
                 .Sub => try self.binaryOp('-'),
@@ -178,6 +180,7 @@ pub const VM = struct {
                     const value = try self.globals.getOrPutValue(identifier.chars, Value.fromNil());
                     try self.push(value.value_ptr.*);
                 },
+
                 .SetGlobal => {
                     const identifier = self.readString();
                     try self.globals.put(identifier.chars, self.peek(0));
@@ -186,6 +189,11 @@ pub const VM = struct {
                 .Print => {
                     (try self.pop()).print();
                     std.debug.print("\n", .{});
+                },
+
+                .Function => {
+                    const value = self.readConstant();
+                    try self.push(value);
                 },
 
                 .Return => {

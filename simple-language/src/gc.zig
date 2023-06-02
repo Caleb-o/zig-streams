@@ -157,6 +157,10 @@ pub const GC = struct {
             try self.markObject(&frame.function.object);
         }
 
+        for (self.vm.globals.values()) |*value| {
+            try self.markValue(value);
+        }
+
         for (self.vm.strings.values()) |string| {
             try self.markObject(&string.object);
         }
@@ -176,7 +180,7 @@ pub const GC = struct {
         }
 
         switch (obj.kind) {
-            .String => {},
+            .String => try self.markObject(obj),
             .Function => {
                 const function = obj.asFunction();
                 try self.markObject(&function.identifier.object);

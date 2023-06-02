@@ -21,6 +21,8 @@ pub const ByteCode = enum(u8) {
     GetGlobal, // string index
     SetGlobal, // string index
 
+    Function, // Index
+
     True,
     False,
     Nil,
@@ -58,6 +60,11 @@ pub const Chunk = struct {
 
     pub fn writeOp(self: *Self, op: ByteCode) !void {
         try self.code.append(@enumToInt(op));
+    }
+
+    pub fn writeOps(self: *Self, op1: ByteCode, op2: ByteCode) !void {
+        try self.code.append(@enumToInt(op1));
+        try self.code.append(@enumToInt(op2));
     }
 
     pub fn writeOpByte(self: *Self, op1: ByteCode, op2: u8) !void {
@@ -100,6 +107,8 @@ pub const Chunk = struct {
 
             .GetGlobal => constantInstruction("OP_GET_GLOBAL", offset, self),
             .SetGlobal => constantInstruction("OP_SET_GLOBAL", offset, self),
+
+            .Function => constantInstruction("OP_FUNCTION", offset, self),
 
             .Add => simpleInstruction("OP_ADD", offset),
             .Sub => simpleInstruction("OP_SUB", offset),

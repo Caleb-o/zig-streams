@@ -38,7 +38,7 @@ pub fn main() !void {
         return;
     };
 
-    vm.start(func);
+    try vm.start(func);
 }
 
 fn readFile(allocator: Allocator, file_name: []const u8) ![]u8 {

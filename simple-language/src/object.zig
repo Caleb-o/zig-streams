@@ -69,7 +69,7 @@ pub const Object = struct {
         switch (self.kind) {
             .String => self.asString().deinit(vm),
             .Function => self.asFunction().deinit(vm),
-            else => unreachable,
+            else => std.debug.panic("{s}\n", .{@tagName(self.kind)}),
         }
     }
 };
@@ -133,7 +133,7 @@ pub const String = struct {
         return buffer;
     }
 
-    pub inline fn deinit(self: *String, vm: *VM) void {
+    pub fn deinit(self: *String, vm: *VM) void {
         vm.allocator.free(self.chars);
         vm.allocator.destroy(self);
     }

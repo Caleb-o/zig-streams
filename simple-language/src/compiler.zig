@@ -163,7 +163,7 @@ pub const Compiler = struct {
     }
 
     fn closeCompiler(self: *Self) !*Function {
-        try self.chunk().writeOp(.Return);
+        try self.chunk().writeOps(.Nil, .Return);
 
         const func = try self.func.end(self.vm);
         if (self.func.enclosing) |enclosing| {
@@ -261,6 +261,11 @@ pub const Compiler = struct {
             try self.consume(.RightParen, "Expect ')' to end global declaration");
             return;
         }
+        if (self.match(.Define)) {
+            try self.defineDeclaration();
+            try self.consume(.RightParen, "Expect ')' to end define declaration");
+            return;
+        }
         try self.statement();
         try self.consume(.RightParen, "Expect ')' to end statement");
     }
@@ -286,6 +291,44 @@ pub const Compiler = struct {
 
         const index = try self.identifierConstant(&identifier);
         try self.chunk().writeOpByte(.SetGlobal, index);
+    }
+
+    fn defineDeclaration(self: *Self) CompilerErr!void {
+        const identifier = self.current;
+        try self.consume(.Identifier, "Expect identifier after global");
+
+        var scope = self.openCompiler(
+            self.func,
+            identifier.lexeme,
+            self.func.depth + 1,
+        );
+        self.func = &scope;
+
+        // Collect parameter list
+        if (self.match(.LeftSquare)) {
+            while (self.match(.Identifier)) {
+                try self.declareVariable(self.previous);
+                try self.defineVariable(self.previous);
+            }
+            try self.consume(.RightSquare, "Expect ']' after parameter list");
+        }
+
+        try self.consume(.LeftParen, "Expect '(' to start block");
+
+        while (!self.match(.Eof) and !self.match(.RightParen)) {
+            try self.declaration();
+        }
+
+        const func = try self.closeCompiler();
+        const index = try self.makeConstant(Value.fromObject(&func.object));
+        try self.chunk().writeOpByte(.Function, index);
+
+        // Declare the function
+        try self.declareVariable(identifier);
+        try self.defineVariable(identifier);
+
+        // HACK
+        try self.defineVariable(identifier);
     }
 
     fn statement(self: *Self) !void {
