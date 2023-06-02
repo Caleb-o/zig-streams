@@ -437,14 +437,9 @@ pub const Compiler = struct {
         }
     }
 
-    fn call(self: *Self) !void {
+    fn call(self: *Self) CompilerErr!void {
         if (self.match(.Call)) {
-            // Get identifier
-            if (self.check(.Dollar)) {
-                try self.getGlobalIdentifier();
-            } else {
-                try self.getIdentifier();
-            }
+            try self.expression();
 
             // Collect arguments - optional
             // NOTE: Does not use list parse, as it needs to live on the stack
