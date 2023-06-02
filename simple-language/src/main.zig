@@ -29,7 +29,7 @@ pub fn main() !void {
     }
 
     var vm = VM.create();
-    try vm.init(galloc);
+    try vm.init(allocator, galloc);
     defer vm.deinit();
 
     var compiler = Compiler.init(file_contents, &vm, allocator);

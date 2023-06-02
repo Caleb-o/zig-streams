@@ -22,6 +22,7 @@ pub const ByteCode = enum(u8) {
     SetGlobal, // string index
 
     Function, // Index
+    Call, // Count
 
     True,
     False,
@@ -109,6 +110,7 @@ pub const Chunk = struct {
             .SetGlobal => constantInstruction("OP_SET_GLOBAL", offset, self),
 
             .Function => constantInstruction("OP_FUNCTION", offset, self),
+            .Call => byteInstruction("OP_CALL", offset, self),
 
             .Add => simpleInstruction("OP_ADD", offset),
             .Sub => simpleInstruction("OP_SUB", offset),

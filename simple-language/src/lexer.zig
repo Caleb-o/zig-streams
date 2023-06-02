@@ -33,6 +33,7 @@ pub const TokenKind = enum {
     Number,
 
     // Keywords.
+    Call,
     Define,
     Else,
     False,
@@ -238,6 +239,7 @@ pub const Lexer = struct {
 
     fn identifierType(self: *Self) TokenKind {
         return switch (self.start[0]) {
+            'c' => self.checkKeyword(1, "all", .Call),
             'd' => self.checkKeyword(1, "efine", .Define),
             'e' => self.checkKeyword(1, "lse", .Else),
             'f' => self.checkKeyword(1, "alse", .False),

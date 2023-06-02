@@ -26,6 +26,7 @@ const VMError = error{
     StackOverflow,
     StackUnderflow,
     TypeError,
+    InvalidCallOnValue,
 } || error{OutOfMemory};
 
 const CallFrame = struct {
@@ -45,6 +46,7 @@ const CallFrame = struct {
 };
 
 pub const VM = struct {
+    arena: Allocator,
     allocator: Allocator,
     objects: ?*Object,
 
@@ -63,6 +65,7 @@ pub const VM = struct {
 
     pub fn create() Self {
         return .{
+            .arena = undefined,
             .allocator = undefined,
             .objects = null,
             .ip = 0,
@@ -76,10 +79,11 @@ pub const VM = struct {
         };
     }
 
-    pub fn init(self: *Self, allocator: Allocator) !void {
+    pub fn init(self: *Self, arena: Allocator, allocator: Allocator) !void {
         var fba = FixedBufferAllocator.init(&stack_buffer);
         const stackAllocator = fba.allocator();
 
+        self.arena = arena;
         self.gc = GC.init(allocator, self);
         self.allocator = self.gc.allocator();
 
@@ -101,7 +105,7 @@ pub const VM = struct {
     }
 
     pub fn start(self: *Self, function: *Function) !void {
-        self.callFunc(function) catch {
+        _ = self.callFunction(function, 0) catch {
             std.debug.print("Could not call function!\n", .{});
             return;
         };
@@ -121,8 +125,69 @@ pub const VM = struct {
         self.gc.collectGarbage() catch unreachable;
     }
 
-    fn callFunc(self: *Self, function: *Function) !void {
-        try self.frames.append(CallFrame.create(function, self.stack.items.len));
+    fn runtimeError(self: *Self, msg: []const u8) void {
+        @setCold(true);
+
+        const frame = self.currentFrame();
+        _ = frame;
+        // FIXME: Add line numbers
+        // const line = frame.function.chunk.findOpcodeLine(frame.ip);
+        const line = 1;
+        std.debug.print("Error: {s} [line {d}]\n", .{ msg, line });
+
+        var idx: isize = @intCast(isize, self.frames.items.len) - 1;
+        while (idx >= 0) : (idx -= 1) {
+            const stackFrame = &self.frames.items[@intCast(usize, idx)];
+            const function = stackFrame.function;
+            const funcLine = 1;
+
+            std.debug.print("[line {d}] in {s}()\n", .{
+                funcLine,
+                function.identifier.chars,
+            });
+        }
+    }
+
+    fn runtimeErrorAlloc(self: *Self, comptime fmt: []const u8, args: anytype) !void {
+        @setCold(true);
+        const msg = try std.fmt.allocPrint(self.arena, fmt, args);
+        self.runtimeError(msg);
+    }
+
+    fn callValue(self: *Self, value: *Value, argCount: usize) !bool {
+        if (!value.isObject()) {
+            self.runtimeError("Cannot call non-function value");
+            return VMError.InvalidCallOnValue;
+        }
+
+        const object = value.asObject();
+        return switch (object.kind) {
+            .Function => try self.callFunction(object.asFunction(), argCount),
+            else => {
+                self.runtimeError("Cannot call non-function object");
+                return VMError.InvalidCallOnValue;
+            },
+        };
+    }
+
+    fn callFunction(self: *Self, function: *objects.Function, argCount: usize) !bool {
+        if (function.arity != argCount) {
+            try self.runtimeErrorAlloc(
+                "Function '{s}' expected {d} arguments, but received {d}.",
+                .{ function.identifier.chars, function.arity, argCount },
+            );
+            return false;
+        }
+
+        try self.pushFrame(CallFrame.create(
+            function,
+            self.stack.items.len - argCount,
+        ));
+        return true;
+    }
+
+    inline fn pushFrame(self: *Self, frame: CallFrame) !void {
+        try self.frames.append(frame);
     }
 
     fn push(self: *Self, value: Value) VMError!void {
@@ -192,6 +257,13 @@ pub const VM = struct {
                 .Function => {
                     const value = self.readConstant();
                     try self.push(value);
+                },
+
+                .Call => {
+                    const argCount = self.readByte();
+                    var func = self.peek(@intCast(usize, argCount));
+
+                    _ = try self.callValue(&func, argCount);
                 },
 
                 .Return => {

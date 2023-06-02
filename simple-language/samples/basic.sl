@@ -1,4 +1,4 @@
 (define foo [a b] (
     (print + a b)
 ))
-(print foo)
+(print call foo [10 20])

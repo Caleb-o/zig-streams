@@ -25,6 +25,7 @@ pub const CompilerErr = error{
     UseBeforeInit,
     UndefinedLocal,
     TooManyConstants,
+    TooManyArguments,
 } || error{OutOfMemory} || std.fmt.ParseFloatError;
 
 const Local = struct {
@@ -320,6 +321,8 @@ pub const Compiler = struct {
             while (self.match(.Identifier)) {
                 try self.declareVariable(self.previous);
                 try self.defineVariable(self.previous);
+
+                self.func.arity += 1;
             }
             try self.consume(.RightSquare, "Expect ']' after parameter list");
         }
@@ -416,14 +419,44 @@ pub const Compiler = struct {
         if (self.check(.Star) or self.check(.Slash)) {
             while (self.match(.Star) or self.match(.Slash)) {
                 const op = self.previous.kind;
-                try self.primary();
-                try self.primary();
+                try self.call();
+                try self.call();
 
                 switch (op) {
                     .Star => try self.chunk().writeOp(.Mul),
                     .Slash => try self.chunk().writeOp(.Div),
                     else => unreachable,
                 }
+            }
+        } else {
+            try self.call();
+        }
+    }
+
+    fn call(self: *Self) !void {
+        if (self.check(.Call)) {
+            while (self.match(.Call)) {
+                // Get identifier
+                if (self.check(.Dollar)) {
+                    try self.getGlobalIdentifier();
+                } else {
+                    try self.getIdentifier();
+                }
+
+                // Collect arguments - optional
+                // NOTE: Does not use list parse, as it needs to live on the stack
+                var count: u32 = 0;
+                if (self.match(.LeftSquare)) {
+                    while (!self.match(.RightSquare)) {
+                        try self.primary();
+                        if (count > std.math.maxInt(u8)) {
+                            self.err("Provided too many arguments to function");
+                            return CompilerErr.TooManyArguments;
+                        }
+                        count += 1;
+                    }
+                }
+                try self.chunk().writeOpByte(.Call, @intCast(u8, count));
             }
         } else {
             try self.primary();
