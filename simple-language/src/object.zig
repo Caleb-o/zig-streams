@@ -133,10 +133,6 @@ pub const String = struct {
         return buffer;
     }
 
-    pub fn copy(vm: *VM, source: []const u8) !*String {
-        return try String.create(vm, try copyLiteral(vm, source));
-    }
-
     pub inline fn deinit(self: *String, vm: *VM) void {
         vm.allocator.free(self.chars);
         vm.allocator.destroy(self);

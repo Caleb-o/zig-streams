@@ -331,6 +331,14 @@ pub const Compiler = struct {
                 try self.chunk().writeConstant(Value.fromNumber(float));
             },
 
+            .String => {
+                try self.chunk().writeConstant(Value.fromObject(&(try objects.String.fromLiteral(
+                    self.vm,
+                    self.current.lexeme[1 .. self.current.lexeme.len - 1],
+                )).object));
+                self.advance();
+            },
+
             .Identifier => try self.getIdentifier(),
 
             .LeftParen => try self.groupedExpression(),

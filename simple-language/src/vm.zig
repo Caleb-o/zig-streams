@@ -3,6 +3,8 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const FixedBufferAllocator = std.heap.FixedBufferAllocator;
 
+const debug = @import("debug.zig");
+
 const compilation = @import("compilation.zig");
 const Chunk = compilation.Chunk;
 const ByteCode = compilation.ByteCode;
@@ -63,7 +65,7 @@ pub const VM = struct {
             .allocator = undefined,
             .objects = null,
             .ip = 0,
-            .running = false,
+            .running = true,
             .fba = undefined,
             .gc = undefined,
             .strings = undefined,
@@ -144,7 +146,6 @@ pub const VM = struct {
 
     // TODO: Consider a status return instead
     fn run(self: *Self) !void {
-        defer std.debug.print("Done!\n", .{});
         while (self.running) {
             const instruction = @intToEnum(ByteCode, self.readByte());
             switch (instruction) {

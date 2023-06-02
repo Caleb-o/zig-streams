@@ -23,6 +23,10 @@ pub const Value = union(enum) {
         return .{ .boolean = value };
     }
 
+    pub fn fromObject(value: *Object) Self {
+        return .{ .object = value };
+    }
+
     // Helpers
     pub fn isNil(self: *const Self) bool {
         return self.* == .nil;
@@ -68,7 +72,7 @@ pub const Value = union(enum) {
             .nil => printd("nil", .{}),
             .number => |v| printd("{d}", .{v}),
             .boolean => |v| printd("{}", .{v}),
-            .object => printd("<object>", .{}),
+            .object => |o| o.print(),
         }
     }
 };

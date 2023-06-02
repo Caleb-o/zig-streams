@@ -19,7 +19,7 @@ pub fn main() !void {
     }
 
     const file_contents = try readFile(allocator, args[1]);
-    std.debug.print("Loaded file '{s}' with {d} bytes\n", .{ args[1], file_contents.len });
+    std.debug.print("Loaded file '{s}'\n", .{args[1]});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var galloc = gpa.allocator();
