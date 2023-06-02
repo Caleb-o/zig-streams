@@ -438,30 +438,28 @@ pub const Compiler = struct {
     }
 
     fn call(self: *Self) !void {
-        if (self.check(.Call)) {
-            while (self.match(.Call)) {
-                // Get identifier
-                if (self.check(.Dollar)) {
-                    try self.getGlobalIdentifier();
-                } else {
-                    try self.getIdentifier();
-                }
-
-                // Collect arguments - optional
-                // NOTE: Does not use list parse, as it needs to live on the stack
-                var count: u32 = 0;
-                if (self.match(.LeftSquare)) {
-                    while (!self.match(.RightSquare)) {
-                        try self.primary();
-                        if (count > std.math.maxInt(u8)) {
-                            self.err("Provided too many arguments to function");
-                            return CompilerErr.TooManyArguments;
-                        }
-                        count += 1;
-                    }
-                }
-                try self.chunk().writeOpByte(.Call, @intCast(u8, count));
+        if (self.match(.Call)) {
+            // Get identifier
+            if (self.check(.Dollar)) {
+                try self.getGlobalIdentifier();
+            } else {
+                try self.getIdentifier();
             }
+
+            // Collect arguments - optional
+            // NOTE: Does not use list parse, as it needs to live on the stack
+            var count: u32 = 0;
+            if (self.match(.LeftSquare)) {
+                while (!self.match(.RightSquare)) {
+                    try self.primary();
+                    if (count > std.math.maxInt(u8)) {
+                        self.err("Provided too many arguments to function");
+                        return CompilerErr.TooManyArguments;
+                    }
+                    count += 1;
+                }
+            }
+            try self.chunk().writeOpByte(.Call, @intCast(u8, count));
         } else {
             try self.primary();
         }

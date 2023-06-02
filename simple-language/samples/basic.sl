@@ -1,4 +1,5 @@
-(define foo [a b] (
+(define add [a b] (
     (+ a b)
 ))
-(print call foo [10 20])
+(global a add)
+(print call $a [10 20])
