@@ -18,6 +18,8 @@ pub const ByteCode = enum(u8) {
 
     GetLocal, // Index
     SetLocal, // Index
+    GetGlobal, // string index
+    SetGlobal, // string index
 
     True,
     False,
@@ -95,6 +97,9 @@ pub const Chunk = struct {
 
             .GetLocal => byteInstruction("OP_GET_LOCAL", offset, self),
             .SetLocal => byteInstruction("OP_SET_LOCAL", offset, self),
+
+            .GetGlobal => constantInstruction("OP_GET_GLOBAL", offset, self),
+            .SetGlobal => constantInstruction("OP_SET_GLOBAL", offset, self),
 
             .Add => simpleInstruction("OP_ADD", offset),
             .Sub => simpleInstruction("OP_SUB", offset),

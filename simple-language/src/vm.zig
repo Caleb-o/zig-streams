@@ -16,6 +16,7 @@ const Value = @import("value.zig").Value;
 const GC = @import("gc.zig").GC;
 
 const StringMap = std.AutoArrayHashMap(u32, *objects.String);
+const GlobalMap = std.StringArrayHashMap(Value);
 
 const stack_count = 256;
 const stack_size = stack_count * @sizeOf(Value);
@@ -53,6 +54,7 @@ pub const VM = struct {
 
     gc: GC,
     strings: StringMap,
+    globals: GlobalMap,
     greyList: ArrayList(*Object),
 
     frames: ArrayList(CallFrame),
@@ -69,6 +71,7 @@ pub const VM = struct {
             .fba = undefined,
             .gc = undefined,
             .strings = undefined,
+            .globals = undefined,
             .greyList = undefined,
             .frames = undefined,
             .stack = undefined,
@@ -87,6 +90,7 @@ pub const VM = struct {
         self.greyList = ArrayList(*Object).init(std.heap.page_allocator);
 
         self.strings = StringMap.init(allocator);
+        self.globals = GlobalMap.init(allocator);
     }
 
     pub fn deinit(self: *Self) void {
@@ -95,6 +99,7 @@ pub const VM = struct {
         self.greyList.deinit();
         self.frames.deinit();
         self.strings.deinit();
+        self.globals.deinit();
     }
 
     pub fn start(self: *Self, function: *Function) void {
@@ -112,6 +117,7 @@ pub const VM = struct {
         self.frames.clearRetainingCapacity();
         self.greyList.clearRetainingCapacity();
         self.strings.clearRetainingCapacity();
+        self.globals.clearRetainingCapacity();
 
         self.gc.collectGarbage() catch unreachable;
     }
@@ -167,6 +173,16 @@ pub const VM = struct {
                     self.stack.items[self.currentFrame().slot + index] = self.peek(0);
                 },
 
+                .GetGlobal => {
+                    const identifier = self.readString();
+                    const value = try self.globals.getOrPutValue(identifier.chars, Value.fromNil());
+                    try self.push(value.value_ptr.*);
+                },
+                .SetGlobal => {
+                    const identifier = self.readString();
+                    try self.globals.put(identifier.chars, self.peek(0));
+                },
+
                 .Print => {
                     (try self.pop()).print();
                     std.debug.print("\n", .{});
@@ -196,14 +212,19 @@ pub const VM = struct {
         return &self.currentFrame().function.chunk;
     }
 
-    fn readByte(self: *Self) u8 {
+    inline fn readByte(self: *Self) u8 {
         const frame = self.currentFrame();
         defer frame.ip += 1;
         return self.currentChunk().code.items[frame.ip];
     }
 
-    fn readConstant(self: *Self) Value {
+    inline fn readConstant(self: *Self) Value {
         return self.currentChunk().constants.items[self.readByte()];
+    }
+
+    inline fn readString(self: *Self) *objects.String {
+        var val = self.readConstant();
+        return val.asObject().asString();
     }
 
     fn binaryOp(self: *Self, comptime op: u8) VMError!void {

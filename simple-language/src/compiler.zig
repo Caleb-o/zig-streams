@@ -24,6 +24,7 @@ pub const CompilerErr = error{
     BindingAlreadyDefined,
     UseBeforeInit,
     UndefinedLocal,
+    TooManyConstants,
 } || error{OutOfMemory} || std.fmt.ParseFloatError;
 
 const Local = struct {
@@ -217,6 +218,17 @@ pub const Compiler = struct {
         return false;
     }
 
+    inline fn makeConstant(self: *Self, value: Value) !u8 {
+        return @intCast(u8, try self.chunk().addConstant(value));
+    }
+
+    fn identifierConstant(self: *Self, token: *const Token) !u8 {
+        return try self.makeConstant(Value.fromObject(&(try objects.String.fromLiteral(
+            self.vm,
+            token.lexeme,
+        )).object));
+    }
+
     fn declareVariable(self: *Self, identifier: Token) !void {
         if (self.func.findLocalInScope(identifier)) |_| {
             return;
@@ -241,7 +253,12 @@ pub const Compiler = struct {
         try self.consume(.LeftParen, "Expect '(' to start declaration");
         if (self.match(.Let)) {
             try self.letDeclaration();
-            try self.consume(.RightParen, "Expect ')' to end declaration");
+            try self.consume(.RightParen, "Expect ')' to end let declaration");
+            return;
+        }
+        if (self.match(.Global)) {
+            try self.globalDeclaration();
+            try self.consume(.RightParen, "Expect ')' to end global declaration");
             return;
         }
         try self.statement();
@@ -258,6 +275,17 @@ pub const Compiler = struct {
 
         // Tell compiler the variable is ready for use
         try self.defineVariable(identifier);
+    }
+
+    fn globalDeclaration(self: *Self) !void {
+        const identifier = self.current;
+        try self.consume(.Identifier, "Expect identifier after global");
+
+        try self.consume(.Equal, "Expect '=' after global identifier");
+        try self.expression();
+
+        const index = try self.identifierConstant(&identifier);
+        try self.chunk().writeOpByte(.SetGlobal, index);
     }
 
     fn statement(self: *Self) !void {
@@ -277,6 +305,17 @@ pub const Compiler = struct {
         self.advance();
         try self.term();
         try self.consume(.RightParen, "Expect ')' to end grouped expression");
+    }
+
+    inline fn getGlobalIdentifier(self: *Self) !void {
+        self.advance();
+        const identifier = self.current;
+        try self.consume(.Identifier, "Expect identifier after '$'");
+
+        // Globals don't expect any local to be defined or to exist
+
+        const index = try self.identifierConstant(&identifier);
+        try self.chunk().writeOpByte(.GetGlobal, index);
     }
 
     fn getIdentifier(self: *Self) !void {
@@ -353,6 +392,7 @@ pub const Compiler = struct {
                 self.advance();
             },
 
+            .Dollar => try self.getGlobalIdentifier(),
             .Identifier => try self.getIdentifier(),
             .LeftParen => try self.groupedExpression(),
 
