@@ -179,6 +179,10 @@ pub const VM = struct {
                     }
                 },
 
+                .True => try self.push(Value.fromBoolean(true)),
+                .False => try self.push(Value.fromBoolean(false)),
+                .Nil => try self.push(Value.fromNil()),
+
                 else => unreachable,
             }
         }

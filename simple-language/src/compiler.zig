@@ -340,8 +340,11 @@ pub const Compiler = struct {
             },
 
             .Identifier => try self.getIdentifier(),
-
             .LeftParen => try self.groupedExpression(),
+
+            .True => try self.chunk().writeOp(.True),
+            .False => try self.chunk().writeOp(.False),
+            .Nil => try self.chunk().writeOp(.Nil),
 
             else => {
                 std.debug.print("Unknown item in expression '{s}'\n", .{self.current.lexeme});
