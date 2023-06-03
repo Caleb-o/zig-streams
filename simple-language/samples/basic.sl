@@ -1,1 +1,1 @@
-(print [20 40])
+(print + 'Hello' ' World!')

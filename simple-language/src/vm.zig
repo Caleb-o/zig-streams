@@ -27,6 +27,7 @@ const VMError = error{
     StackUnderflow,
     TypeError,
     InvalidCallOnValue,
+    InvalidOperation,
 } || error{OutOfMemory};
 
 const CallFrame = struct {
@@ -342,6 +343,21 @@ pub const VM = struct {
             }
 
             return;
+        } else if (lhs.isObject() and rhs.isObject()) {
+            if (lhs.asObject().isString() and rhs.asObject().isString()) {
+                const lval = lhs.asObject().asString();
+                const rval = rhs.asObject().asString();
+
+                switch (op) {
+                    '+' => try self.push(Value.fromObject(&(try objects.String.concat(
+                        self,
+                        lval,
+                        rval,
+                    )).object)),
+                    else => return VMError.InvalidOperation,
+                }
+                return;
+            }
         }
         return VMError.TypeError;
     }
