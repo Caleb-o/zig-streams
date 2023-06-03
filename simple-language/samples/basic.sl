@@ -1,7 +1,6 @@
-(print call $add [10 20])
-
 (define add [a b] (
     (+ a b)
+    (print 'Hello')
 ))
 
 (print call $add [20 20])

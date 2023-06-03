@@ -180,6 +180,7 @@ pub const Compiler = struct {
 
     fn closeCompiler(self: *Self) !*Function {
         if (self.chunk().code.items.len > 0) {
+            _ = self.chunk().code.pop();
             try self.chunk().writeOp(.Return);
         } else {
             try self.chunk().writeOps(.Nil, .Return);
@@ -362,12 +363,13 @@ pub const Compiler = struct {
             .Print => try self.printStmt(),
             else => try self.expression(),
         }
+        try self.chunk().writeOp(.Pop);
     }
 
     fn printStmt(self: *Self) !void {
         self.advance();
         try self.expression();
-        try self.chunk().writeOp(.Print);
+        try self.chunk().writeOps(.Print, .Nil);
     }
 
     fn groupedExpression(self: *Self) !void {
