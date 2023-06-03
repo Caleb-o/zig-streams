@@ -172,12 +172,6 @@ pub const GC = struct {
     }
 
     fn blackenObject(self: *Self, obj: *Object) !void {
-        if (debug.log_gc) {
-            std.debug.print("blacken: '", .{});
-            obj.print();
-            std.debug.print("'\n", .{});
-        }
-
         switch (obj.kind) {
             .String => try self.markObject(obj),
             .Function => {

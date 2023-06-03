@@ -36,8 +36,9 @@ pub const Object = struct {
         switch (self.kind) {
             .String => self.asString().deinit(vm),
             .List => self.asList().deinit(vm),
+            .NativeFunction => self.asNativeFunction().deinit(vm),
             .Function => self.asFunction().deinit(vm),
-            else => unreachable,
+            // else => unreachable,
         }
     }
 
@@ -48,6 +49,10 @@ pub const Object = struct {
 
     pub inline fn isList(self: *Self) bool {
         return self.kind == .List;
+    }
+
+    pub inline fn isNativeFunction(self: *Self) bool {
+        return self.kind == .NativeFunction;
     }
 
     pub inline fn isFunction(self: *Self) bool {
@@ -64,6 +69,11 @@ pub const Object = struct {
         return @fieldParentPtr(List, "object", self);
     }
 
+    pub fn asNativeFunction(self: *Self) *NativeFunction {
+        assert(self.isNativeFunction());
+        return @fieldParentPtr(NativeFunction, "object", self);
+    }
+
     pub fn asFunction(self: *Self) *Function {
         assert(self.isFunction());
         return @fieldParentPtr(Function, "object", self);
@@ -73,6 +83,7 @@ pub const Object = struct {
         switch (self.kind) {
             .String => std.debug.print("{s}", .{self.asString().chars}),
             .Function => std.debug.print("<fn {s}>", .{self.asFunction().identifier.chars}),
+            .NativeFunction => std.debug.print("<native fn {s}>", .{self.asNativeFunction().identifier}),
             .List => {
                 std.debug.print("[", .{});
                 const list = self.asList();
@@ -88,7 +99,7 @@ pub const Object = struct {
 
                 std.debug.print("]", .{});
             },
-            else => unreachable,
+            // else => unreachable,
         }
     }
 };
@@ -189,6 +200,31 @@ pub const List = struct {
         if (self.buffer) |buffer| {
             vm.allocator.free(buffer);
         }
+        vm.allocator.destroy(self);
+    }
+};
+
+pub const ZigNativeFn = *const fn (args: []Value) Value;
+
+pub const NativeFunction = struct {
+    object: Object,
+    identifier: []const u8,
+    arity: u8,
+    function: ZigNativeFn,
+
+    const Native = @This();
+
+    pub fn create(vm: *VM, identifier: []const u8, arity: u8, function: ZigNativeFn) !*Native {
+        const object = try Object.init(vm, Native, .NativeFunction);
+        const func = object.asNativeFunction();
+        func.identifier = identifier;
+        func.arity = arity;
+        func.function = function;
+
+        return func;
+    }
+
+    pub inline fn deinit(self: *Native, vm: *VM) void {
         vm.allocator.destroy(self);
     }
 };

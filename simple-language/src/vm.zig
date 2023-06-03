@@ -15,10 +15,12 @@ const Function = objects.Function;
 const Value = @import("value.zig").Value;
 const GC = @import("gc.zig").GC;
 
+const NativeFns = @import("nativefns.zig");
+
 const StringMap = std.AutoArrayHashMap(u32, *objects.String);
 const GlobalMap = std.StringArrayHashMap(Value);
 
-const stack_count = 256;
+const stack_count = 1024;
 const stack_size = stack_count * @sizeOf(Value);
 var stack_buffer: [stack_size]u8 = undefined;
 
@@ -106,6 +108,8 @@ pub const VM = struct {
     }
 
     pub fn start(self: *Self, function: *Function) !void {
+        try self.defineNatives();
+
         _ = self.callFunction(function, 0) catch {
             std.debug.print("Could not call function!\n", .{});
             return;
@@ -114,6 +118,20 @@ pub const VM = struct {
         self.run() catch {
             std.debug.print("Failed to run program!\n", .{});
         };
+    }
+
+    fn defineNatives(self: *Self) !void {
+        try self.defineNative("clock", 0, NativeFns.clock);
+    }
+
+    fn defineNative(self: *Self, identifier: []const u8, arity: u8, function: objects.ZigNativeFn) !void {
+        const func = try objects.NativeFunction.create(
+            self,
+            identifier,
+            arity,
+            function,
+        );
+        try self.globals.put(identifier, Value.fromObject(&func.object));
     }
 
     fn cleanupWithGC(self: *Self) void {
@@ -163,12 +181,31 @@ pub const VM = struct {
 
         const object = value.asObject();
         return switch (object.kind) {
+            .NativeFunction => try self.callNative(object.asNativeFunction(), argCount),
             .Function => try self.callFunction(object.asFunction(), argCount),
             else => {
                 self.runtimeError("Cannot call non-function object");
                 return VMError.InvalidCallOnValue;
             },
         };
+    }
+
+    fn callNative(self: *Self, function: *objects.NativeFunction, argCount: usize) !bool {
+        if (function.arity != argCount) {
+            try self.runtimeErrorAlloc(
+                "Native Function '{s}' expected {d} arguments, but received {d}.",
+                .{ function.identifier, function.arity, argCount },
+            );
+            return false;
+        }
+
+        const args = self.stack.items[self.stack.items.len - argCount ..];
+        const result = function.function(args);
+
+        try self.stack.resize(self.stack.items.len - argCount);
+
+        try self.push(result);
+        return true;
     }
 
     fn callFunction(self: *Self, function: *objects.Function, argCount: usize) !bool {
@@ -198,7 +235,7 @@ pub const VM = struct {
     }
 
     fn push(self: *Self, value: Value) VMError!void {
-        if (self.stack.items.len > std.math.maxInt(u8)) {
+        if (self.stack.items.len > stack_count) {
             std.debug.print("Error: Stack overflow!\n", .{});
             return VMError.StackOverflow;
         }
