@@ -55,17 +55,6 @@ pub const Token = struct {
     line: u32,
     column: u32,
     lexeme: []const u8,
-
-    const Self = @This();
-
-    pub fn artificial() Self {
-        return .{
-            .kind = .Error,
-            .line = 0,
-            .column = 0,
-            .lexeme = undefined,
-        };
-    }
 };
 
 pub const Lexer = struct {

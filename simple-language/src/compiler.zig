@@ -38,7 +38,7 @@ const Local = struct {
 
     pub fn default() Self {
         return .{
-            .identifier = Token.artificial(),
+            .identifier = undefined,
             .index = 0,
             .depth = 0,
             .initialised = false,
@@ -62,8 +62,7 @@ const FunctionCompiler = struct {
     identifier: []const u8,
     arity: u8,
     chunk: Chunk,
-    locals: []Local,
-    localCount: usize,
+    locals: ArrayList(Local),
 
     const Self = @This();
 
@@ -74,12 +73,13 @@ const FunctionCompiler = struct {
             .identifier = identifier,
             .arity = 0,
             .chunk = Chunk.init(allocator),
-            .locals = &[_]Local{Local.default()} ** 256,
-            .localCount = 0,
+            .locals = ArrayList(Local).init(allocator),
         };
     }
 
     pub fn end(self: *Self, vm: *VM) !*Function {
+        self.locals.deinit();
+
         const function = try objects.Function.init(
             vm,
             try objects.String.fromLiteral(vm, self.identifier),
@@ -90,18 +90,15 @@ const FunctionCompiler = struct {
     }
 
     pub fn addLocal(self: *Self, identifier: Token) !void {
-        self.locals[self.localCount] = Local.create(
+        try self.locals.append(Local.create(
             identifier,
-            @intCast(u8, self.localCount),
+            @intCast(u8, self.locals.items.len),
             self.depth,
-        );
-        self.localCount += 1;
+        ));
     }
 
     pub fn findLocal(self: *Self, identifier: Token) ?*Local {
-        for (0..self.localCount) |idx| {
-            const local = &self.locals[idx];
-            // TODO: Consider depth?
+        for (self.locals.items) |*local| {
             if (std.mem.eql(u8, local.identifier.lexeme, identifier.lexeme)) {
                 return local;
             }
@@ -110,8 +107,7 @@ const FunctionCompiler = struct {
     }
 
     pub fn findLocalInScope(self: *Self, identifier: Token) ?*Local {
-        for (0..self.localCount) |idx| {
-            const local = &self.locals[idx];
+        for (self.locals.items) |*local| {
             if (local.depth < self.depth) break;
             if (local.depth == self.depth and std.mem.eql(u8, local.identifier.lexeme, identifier.lexeme)) {
                 return local;
@@ -135,6 +131,7 @@ pub const Compiler = struct {
     pub fn init(source: []const u8, vm: *VM, arena: Allocator) Self {
         var l = Lexer.init(source);
         var t = l.getToken();
+
         return .{
             .lexer = l,
             .previous = undefined,
@@ -145,9 +142,12 @@ pub const Compiler = struct {
         };
     }
 
+    pub fn deinit(self: *Self) void {
+        self.innerArena.deinit();
+    }
+
     pub fn compile(self: *Self) CompilerErr!*Function {
         var scope = self.openCompiler(
-            null,
             "script",
             0,
         );
@@ -167,12 +167,12 @@ pub const Compiler = struct {
         return str;
     }
 
-    inline fn openCompiler(self: *Self, enclosing: ?*FunctionCompiler, identifier: []const u8, depth: u8) FunctionCompiler {
+    inline fn openCompiler(self: *Self, identifier: []const u8, depth: u8) FunctionCompiler {
         // NOTE: Using the arena resolves a strange lifetime issue
         // Chunks live from start to end anyway, so an arena is still viable
         return FunctionCompiler.create(
             self.arena,
-            enclosing,
+            self.func,
             identifier,
             depth,
         );
@@ -315,7 +315,6 @@ pub const Compiler = struct {
         try self.consume(.Identifier, "Expect identifier after global");
 
         var scope = self.openCompiler(
-            self.func,
             identifier.lexeme,
             self.func.depth + 1,
         );
