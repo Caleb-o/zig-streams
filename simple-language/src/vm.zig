@@ -179,6 +179,12 @@ pub const VM = struct {
             return false;
         }
 
+        // Assume 2 is Nil, Return and skip the call
+        if (function.chunk.code.items.len == 2) {
+            try self.push(Value.fromNil());
+            return true;
+        }
+
         try self.pushFrame(CallFrame.create(
             function,
             self.stack.items.len - argCount,
