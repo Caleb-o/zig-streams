@@ -339,14 +339,22 @@ pub const Compiler = struct {
 
         const func = try self.closeCompiler();
         const index = try self.makeConstant(Value.fromObject(&func.object));
-        try self.chunk().writeOpByte(.Function, index);
 
-        // Declare the function
-        try self.declareVariable(identifier);
-        try self.defineVariable(identifier);
+        if (self.func.depth == 0) {
+            // Place top-level functions in global table
+            const id_idx = try self.identifierConstant(&identifier);
+            const val = &self.func.chunk.constants.items[id_idx];
+            const id = val.asObject().asString();
 
-        // HACK
-        try self.defineVariable(identifier);
+            try self.vm.globals.put(id.chars, Value.fromObject(&func.object));
+        } else {
+            // Declare the function
+            try self.declareVariable(identifier);
+            try self.defineVariable(identifier);
+            try self.chunk().writeOpByte(.Function, index);
+            // HACK
+            try self.defineVariable(identifier);
+        }
     }
 
     fn statement(self: *Self) !void {
