@@ -4,6 +4,7 @@ const assert = std.debug.assert;
 
 const Chunk = @import("compilation.zig").Chunk;
 const VM = @import("vm.zig").VM;
+const Value = @import("value.zig").Value;
 
 pub const ObjectKind = enum {
     String,
@@ -33,6 +34,8 @@ pub const Object = struct {
 
     pub fn deinit(self: *Self, vm: *VM) void {
         switch (self.kind) {
+            .String => self.asString().deinit(vm),
+            .List => self.asList().deinit(vm),
             .Function => self.asFunction().deinit(vm),
             else => unreachable,
         }
@@ -41,6 +44,10 @@ pub const Object = struct {
     // Helpers
     pub inline fn isString(self: *Self) bool {
         return self.kind == .String;
+    }
+
+    pub inline fn isList(self: *Self) bool {
+        return self.kind == .List;
     }
 
     pub inline fn isFunction(self: *Self) bool {
@@ -52,6 +59,11 @@ pub const Object = struct {
         return @fieldParentPtr(String, "object", self);
     }
 
+    pub fn asList(self: *Self) *List {
+        std.debug.assert(self.isList());
+        return @fieldParentPtr(List, "object", self);
+    }
+
     pub fn asFunction(self: *Self) *Function {
         assert(self.isFunction());
         return @fieldParentPtr(Function, "object", self);
@@ -61,15 +73,22 @@ pub const Object = struct {
         switch (self.kind) {
             .String => std.debug.print("{s}", .{self.asString().chars}),
             .Function => std.debug.print("<fn {s}>", .{self.asFunction().identifier.chars}),
-            else => unreachable,
-        }
-    }
+            .List => {
+                std.debug.print("[", .{});
+                const list = self.asList();
 
-    pub fn destroy(self: *Self, vm: *VM) void {
-        switch (self.kind) {
-            .String => self.asString().deinit(vm),
-            .Function => self.asFunction().deinit(vm),
-            else => std.debug.panic("{s}\n", .{@tagName(self.kind)}),
+                if (list.buffer) |buffer| {
+                    for (buffer, 0..) |item, idx| {
+                        item.print();
+                        if (idx < buffer.len - 1) {
+                            std.debug.print(" ", .{});
+                        }
+                    }
+                }
+
+                std.debug.print("]", .{});
+            },
+            else => unreachable,
         }
     }
 };
@@ -145,6 +164,32 @@ pub const String = struct {
             hash *%= 16777619;
         }
         return hash;
+    }
+};
+
+pub const List = struct {
+    object: Object,
+    buffer: ?[]Value,
+
+    pub fn create(vm: *VM, items: []const Value) !*List {
+        const object = try Object.init(vm, List, .List);
+        const list = object.asList();
+        list.object = object.*;
+        if (items.len == 0) {
+            list.buffer = null;
+        } else {
+            list.buffer = try vm.allocator.alloc(Value, items.len);
+            std.mem.copyForwards(Value, list.buffer.?, items);
+        }
+
+        return list;
+    }
+
+    pub inline fn deinit(self: *List, vm: *VM) void {
+        if (self.buffer) |buffer| {
+            vm.allocator.free(buffer);
+        }
+        vm.allocator.destroy(self);
     }
 };
 

@@ -115,7 +115,6 @@ pub const GC = struct {
 
         try self.markRoots();
         try self.traceReferences();
-        try self.removeWhiteStrings(&self.vm.strings);
         try self.sweep();
 
         if (debug.log_gc) {
@@ -186,6 +185,14 @@ pub const GC = struct {
                 try self.markObject(&function.identifier.object);
                 try self.markArrayList(&function.chunk.constants);
             },
+            .List => {
+                const list = obj.asList();
+                if (list.buffer) |buffer| {
+                    for (buffer) |*item| {
+                        try self.markValue(item);
+                    }
+                }
+            },
             else => unreachable,
         }
     }
@@ -214,20 +221,8 @@ pub const GC = struct {
                     self.vm.objects = obj;
                 }
 
-                unreached.destroy(self.vm);
+                unreached.deinit(self.vm);
             }
         }
-    }
-
-    fn removeWhiteStrings(self: *Self, table: *StringMap) !void {
-        _ = table;
-        _ = self;
-        // for (table.entries) |*entry| {
-        //     if (entry.key) |key| {
-        //         if (!key.object.marked) {
-        //             _ = table.delete(key);
-        //         }
-        //     }
-        // }
     }
 };

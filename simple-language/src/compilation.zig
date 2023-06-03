@@ -28,6 +28,7 @@ pub const ByteCode = enum(u8) {
     False,
     Nil,
 
+    IntoList, // Count
     Return,
     Print,
 };
@@ -120,6 +121,8 @@ pub const Chunk = struct {
             .Nil => simpleInstruction("OP_NIL", offset),
             .True => simpleInstruction("OP_TRUE", offset),
             .False => simpleInstruction("OP_FALSE", offset),
+
+            .IntoList => byteInstruction("OP_INTO_LIST", offset, self),
 
             .Print => simpleInstruction("OP_PRINT", offset),
             .Return => simpleInstruction("OP_RETURN", offset),

@@ -406,6 +406,22 @@ pub const Compiler = struct {
         return CompilerErr.UndefinedLocal;
     }
 
+    fn listLiteral(self: *Self) !void {
+        self.advance();
+        var count: usize = 0;
+        while (!self.match(.RightSquare)) {
+            try self.expression();
+            count += 1;
+        }
+
+        if (count > std.math.maxInt(u8)) {
+            self.err("Too many items in list literal");
+            return CompilerErr.TooManyArguments;
+        }
+
+        try self.chunk().writeOpByte(.IntoList, @intCast(u8, count));
+    }
+
     fn expression(self: *Self) !void {
         try self.term();
     }
@@ -471,6 +487,10 @@ pub const Compiler = struct {
 
     fn primary(self: *Self) CompilerErr!void {
         switch (self.current.kind) {
+            .Dollar => try self.getGlobalIdentifier(),
+            .Identifier => try self.getIdentifier(),
+            .LeftParen => try self.groupedExpression(),
+
             .Number => {
                 const float = try std.fmt.parseFloat(f32, self.current.lexeme);
                 self.advance();
@@ -485,13 +505,11 @@ pub const Compiler = struct {
                 self.advance();
             },
 
-            .Dollar => try self.getGlobalIdentifier(),
-            .Identifier => try self.getIdentifier(),
-            .LeftParen => try self.groupedExpression(),
-
             .True => try self.chunk().writeOp(.True),
             .False => try self.chunk().writeOp(.False),
             .Nil => try self.chunk().writeOp(.Nil),
+
+            .LeftSquare => try self.listLiteral(),
 
             else => {
                 std.debug.print("Unknown item in expression '{s}'\n", .{self.current.lexeme});

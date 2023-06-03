@@ -284,6 +284,15 @@ pub const VM = struct {
                     try self.push(result);
                 },
 
+                .IntoList => {
+                    const count = @intCast(usize, self.readByte());
+                    var items = self.stack.items[self.stack.items.len - count ..];
+
+                    const list = Value.fromObject(&(try objects.List.create(self, items)).object);
+                    try self.stack.resize(self.stack.items.len - count);
+                    try self.push(list);
+                },
+
                 .True => try self.push(Value.fromBoolean(true)),
                 .False => try self.push(Value.fromBoolean(false)),
                 .Nil => try self.push(Value.fromNil()),
