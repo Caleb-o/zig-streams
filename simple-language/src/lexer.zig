@@ -19,12 +19,9 @@ pub const TokenKind = enum {
     StarStar,
 
     Bang,
-    EqualEqual,
     Greater,
-    GreaterGreater,
     GreaterEqual,
     Less,
-    LessLess,
     LessEqual,
 
     // Literals.
@@ -55,6 +52,15 @@ pub const Token = struct {
     line: u32,
     column: u32,
     lexeme: []const u8,
+
+    pub fn artificial(lexeme: []const u8) @This() {
+        return .{
+            .kind = .Identifier,
+            .line = 1,
+            .column = 1,
+            .lexeme = lexeme,
+        };
+    }
 };
 
 pub const Lexer = struct {
@@ -100,7 +106,7 @@ pub const Lexer = struct {
 
             '$' => self.makeToken(.Dollar),
             '!' => self.makeToken(.Bang),
-            '=' => self.makeToken(if (self.match('=')) .EqualEqual else .Equal),
+            '=' => self.makeToken(.Equal),
             '<' => self.makeToken(if (self.match('=')) .LessEqual else .Less),
             '>' => self.makeToken(if (self.match('=')) .GreaterEqual else .Greater),
 

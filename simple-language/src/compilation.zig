@@ -13,6 +13,12 @@ pub const ByteCode = enum(u8) {
     Mul,
     Div,
 
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Equal,
+
     Jump,
     JumpNot,
 
@@ -86,6 +92,16 @@ pub const Chunk = struct {
         try self.writeOpByte(.ConstantByte, @intCast(u8, index));
     }
 
+    pub fn writeJump(self: *Self, op: ByteCode) !usize {
+        try self.writeOpByte(op, 0xFF);
+        return self.code.items.len - 1;
+    }
+
+    pub fn patchJump(self: *Self, location: usize) void {
+        std.debug.assert(self.code.items.len < std.math.maxInt(u8));
+        self.code.items[location] = @intCast(u8, self.code.items.len);
+    }
+
     pub fn disassemble(self: *Chunk, name: []const u8) void {
         var index: u32 = 0;
         const len = @intCast(u32, self.code.items.len);
@@ -113,10 +129,19 @@ pub const Chunk = struct {
             .Function => constantInstruction("OP_FUNCTION", offset, self),
             .Call => byteInstruction("OP_CALL", offset, self),
 
+            .Jump => byteInstruction("OP_JUMP", offset, self),
+            .JumpNot => byteInstruction("OP_JUMP_NOT", offset, self),
+
             .Add => simpleInstruction("OP_ADD", offset),
             .Sub => simpleInstruction("OP_SUB", offset),
             .Mul => simpleInstruction("OP_MULTIPLY", offset),
             .Div => simpleInstruction("OP_DIVIDE", offset),
+
+            .Less => simpleInstruction("OP_LESS", offset),
+            .LessEqual => simpleInstruction("OP_LESS_EQ", offset),
+            .Greater => simpleInstruction("OP_GREATER", offset),
+            .GreaterEqual => simpleInstruction("OP_GREATER_EQ", offset),
+            .Equal => simpleInstruction("OP_EQUAL", offset),
 
             .Nil => simpleInstruction("OP_NIL", offset),
             .True => simpleInstruction("OP_TRUE", offset),
@@ -127,7 +152,7 @@ pub const Chunk = struct {
             .Print => simpleInstruction("OP_PRINT", offset),
             .Return => simpleInstruction("OP_RETURN", offset),
 
-            else => std.debug.panic("Undefined: {}\n", .{instruction}),
+            // else => std.debug.panic("Undefined: {}\n", .{instruction}),
         };
     }
 

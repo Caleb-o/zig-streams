@@ -147,7 +147,7 @@ pub const Compiler = struct {
     }
 
     pub fn compile(self: *Self) CompilerErr!*Function {
-        var scope = self.openCompiler(
+        var scope = try self.openCompiler(
             "script",
             0,
         );
@@ -167,7 +167,7 @@ pub const Compiler = struct {
         return str;
     }
 
-    inline fn openCompiler(self: *Self, identifier: []const u8, depth: u8) FunctionCompiler {
+    inline fn openCompiler(self: *Self, identifier: []const u8, depth: u8) !FunctionCompiler {
         // NOTE: Using the arena resolves a strange lifetime issue
         // Chunks live from start to end anyway, so an arena is still viable
         return FunctionCompiler.create(
@@ -179,8 +179,8 @@ pub const Compiler = struct {
     }
 
     fn closeCompiler(self: *Self) !*Function {
-        if (self.chunk().code.items.len > 0) {
-            _ = self.chunk().code.pop();
+        if (self.func.depth > 0 and self.chunk().code.items.len > 0) {
+            // _ = self.chunk().code.pop();
             try self.chunk().writeOp(.Return);
         } else {
             try self.chunk().writeOps(.Nil, .Return);
@@ -230,10 +230,30 @@ pub const Compiler = struct {
         return self.current.kind == kind;
     }
 
+    fn checkAny(self: *Self, kind: []const TokenKind) bool {
+        for (kind) |k| {
+            if (self.current.kind == k) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     fn match(self: *Self, kind: TokenKind) bool {
         if (self.current.kind == kind) {
             self.advance();
             return true;
+        }
+
+        return false;
+    }
+
+    fn matchAny(self: *Self, kind: []const TokenKind) bool {
+        for (kind) |k| {
+            if (self.current.kind == k) {
+                self.advance();
+                return true;
+            }
         }
 
         return false;
@@ -314,11 +334,14 @@ pub const Compiler = struct {
         const identifier = self.current;
         try self.consume(.Identifier, "Expect identifier after global");
 
-        var scope = self.openCompiler(
+        var scope = try self.openCompiler(
             identifier.lexeme,
             self.func.depth + 1,
         );
         self.func = &scope;
+
+        try self.declareVariable(identifier);
+        try self.defineVariable(identifier);
 
         // Collect parameter list
         if (self.match(.LeftSquare)) {
@@ -348,9 +371,6 @@ pub const Compiler = struct {
 
             try self.vm.globals.put(id.chars, Value.fromObject(&func.object));
         } else {
-            // Declare the function
-            try self.declareVariable(identifier);
-            try self.defineVariable(identifier);
             try self.chunk().writeOpByte(.Function, index);
             // HACK
             try self.defineVariable(identifier);
@@ -360,9 +380,10 @@ pub const Compiler = struct {
     fn statement(self: *Self) !void {
         switch (self.current.kind) {
             .Print => try self.printStmt(),
+            .If => try self.ifStmt(),
             else => try self.expression(),
         }
-        try self.chunk().writeOp(.Pop);
+        // try self.chunk().writeOp(.Pop);
     }
 
     fn printStmt(self: *Self) !void {
@@ -371,9 +392,23 @@ pub const Compiler = struct {
         try self.chunk().writeOps(.Print, .Nil);
     }
 
+    fn ifStmt(self: *Self) CompilerErr!void {
+        self.advance();
+        try self.expression();
+
+        const falseLocation = try self.chunk().writeJump(.JumpNot);
+        try self.statement();
+        const trueLocation = try self.chunk().writeJump(.Jump);
+
+        self.chunk().patchJump(falseLocation);
+        try self.statement();
+
+        self.chunk().patchJump(trueLocation);
+    }
+
     fn groupedExpression(self: *Self) !void {
         self.advance();
-        try self.term();
+        try self.expression();
         try self.consume(.RightParen, "Expect ')' to end grouped expression");
     }
 
@@ -423,7 +458,30 @@ pub const Compiler = struct {
     }
 
     fn expression(self: *Self) !void {
-        try self.term();
+        try self.equality();
+    }
+
+    fn equality(self: *Self) !void {
+        const kind = [_]TokenKind{ .Less, .LessEqual, .Greater, .GreaterEqual, .Equal };
+
+        if (self.checkAny(&kind)) {
+            while (self.matchAny(&kind)) {
+                const op = self.previous.kind;
+                try self.term();
+                try self.term();
+
+                switch (op) {
+                    .Less => try self.chunk().writeOp(.Less),
+                    .LessEqual => try self.chunk().writeOp(.LessEqual),
+                    .Greater => try self.chunk().writeOp(.Greater),
+                    .GreaterEqual => try self.chunk().writeOp(.GreaterEqual),
+                    .Equal => try self.chunk().writeOp(.Equal),
+                    else => unreachable,
+                }
+            }
+        } else {
+            try self.term();
+        }
     }
 
     fn term(self: *Self) !void {

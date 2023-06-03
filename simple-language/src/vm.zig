@@ -110,6 +110,8 @@ pub const VM = struct {
     pub fn start(self: *Self, function: *Function) !void {
         try self.defineNatives();
 
+        try self.push(Value.fromObject(&function.object));
+
         _ = self.callFunction(function, 0) catch {
             std.debug.print("Could not call function!\n", .{});
             return;
@@ -118,6 +120,8 @@ pub const VM = struct {
         self.run() catch {
             std.debug.print("Failed to run program!\n", .{});
         };
+
+        _ = try self.pop();
     }
 
     fn defineNatives(self: *Self) !void {
@@ -202,7 +206,7 @@ pub const VM = struct {
         const args = self.stack.items[self.stack.items.len - argCount ..];
         const result = function.function(args);
 
-        try self.stack.resize(self.stack.items.len - argCount);
+        try self.stack.resize(self.stack.items.len - 1 - argCount);
 
         try self.push(result);
         return true;
@@ -218,14 +222,14 @@ pub const VM = struct {
         }
 
         // Assume 2 is Nil, Return and skip the call
-        if (function.chunk.code.items.len == 2) {
+        if (self.frames.items.len > 0 and function.chunk.code.items.len == 2) {
             try self.push(Value.fromNil());
             return true;
         }
 
         try self.pushFrame(CallFrame.create(
             function,
-            self.stack.items.len - argCount,
+            self.stack.items.len - 1 - argCount,
         ));
         return true;
     }
@@ -260,16 +264,43 @@ pub const VM = struct {
 
     // TODO: Consider a status return instead
     fn run(self: *Self) !void {
+        // std.debug.print("start\n", .{});
         while (self.running) {
             const instruction = @intToEnum(ByteCode, self.readByte());
+            // std.debug.print("{d:0>4} {s}\n", .{ self.currentFrame().ip - 1, @tagName(instruction) });
             switch (instruction) {
                 .ConstantByte => try self.push(self.readConstant()),
                 .Pop => _ = try self.pop(),
 
-                .Add => try self.binaryOp('+'),
-                .Sub => try self.binaryOp('-'),
-                .Mul => try self.binaryOp('*'),
-                .Div => try self.binaryOp('/'),
+                .Add => try self.binaryOp(.Add),
+                .Sub => try self.binaryOp(.Sub),
+                .Mul => try self.binaryOp(.Mul),
+                .Div => try self.binaryOp(.Div),
+
+                .Less => try self.binaryOp(.Less),
+                .LessEqual => try self.binaryOp(.LessEqual),
+                .Greater => try self.binaryOp(.Greater),
+                .GreaterEqual => try self.binaryOp(.GreaterEqual),
+                .Equal => try self.binaryOp(.Equal),
+
+                .Jump => {
+                    const loc = self.readByte();
+                    self.currentFrame().ip = loc;
+                },
+
+                .JumpNot => {
+                    const loc = self.readByte();
+                    const result = try self.pop();
+
+                    if (!result.isBoolean()) {
+                        self.runtimeError("Cannot check condition of non-boolean value");
+                        return VMError.TypeError;
+                    }
+
+                    if (!result.asBoolean()) {
+                        self.currentFrame().ip = loc;
+                    }
+                },
 
                 .GetLocal => {
                     const index = self.readByte();
@@ -315,7 +346,8 @@ pub const VM = struct {
                     const oldFrame = self.frames.pop();
 
                     if (self.frames.items.len == 0) {
-                        return;
+                        self.running = false;
+                        break;
                     }
 
                     try self.stack.resize(oldFrame.slot);
@@ -335,7 +367,7 @@ pub const VM = struct {
                 .False => try self.push(Value.fromBoolean(false)),
                 .Nil => try self.push(Value.fromNil()),
 
-                else => unreachable,
+                // else => std.debug.panic("{s}\n", .{@tagName(instruction)}),
             }
         }
     }
@@ -363,7 +395,7 @@ pub const VM = struct {
         return val.asObject().asString();
     }
 
-    fn binaryOp(self: *Self, comptime op: u8) VMError!void {
+    fn binaryOp(self: *Self, comptime op: ByteCode) VMError!void {
         const rhs = try self.pop();
         const lhs = try self.pop();
 
@@ -372,10 +404,16 @@ pub const VM = struct {
             const rval = rhs.asNumber();
 
             switch (op) {
-                '+' => try self.push(Value.fromNumber(lval + rval)),
-                '-' => try self.push(Value.fromNumber(lval - rval)),
-                '*' => try self.push(Value.fromNumber(lval * rval)),
-                '/' => try self.push(Value.fromNumber(lval / rval)),
+                .Add => try self.push(Value.fromNumber(lval + rval)),
+                .Sub => try self.push(Value.fromNumber(lval - rval)),
+                .Mul => try self.push(Value.fromNumber(lval * rval)),
+                .Div => try self.push(Value.fromNumber(lval / rval)),
+
+                .Less => try self.push(Value.fromBoolean(lval < rval)),
+                .LessEqual => try self.push(Value.fromBoolean(lval <= rval)),
+                .Greater => try self.push(Value.fromBoolean(lval > rval)),
+                .GreaterEqual => try self.push(Value.fromBoolean(lval >= rval)),
+                .Equal => try self.push(Value.fromBoolean(lval == rval)),
                 else => unreachable,
             }
 
@@ -386,7 +424,7 @@ pub const VM = struct {
                 const rval = rhs.asObject().asString();
 
                 switch (op) {
-                    '+' => try self.push(Value.fromObject(&(try objects.String.concat(
+                    .Add => try self.push(Value.fromObject(&(try objects.String.concat(
                         self,
                         lval,
                         rval,
