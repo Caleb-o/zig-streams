@@ -291,24 +291,18 @@ pub const Compiler = struct {
     }
 
     fn declaration(self: *Self) !void {
-        try self.consume(.LeftParen, "Expect '(' to start declaration");
         if (self.match(.Let)) {
             try self.letDeclaration();
-            try self.consume(.RightParen, "Expect ')' to end let declaration");
-            return;
-        }
-        if (self.match(.Global)) {
+        } else if (self.match(.Global)) {
             try self.globalDeclaration();
-            try self.consume(.RightParen, "Expect ')' to end global declaration");
-            return;
-        }
-        if (self.match(.Define)) {
+        } else if (self.match(.Define)) {
             try self.defineDeclaration();
-            try self.consume(.RightParen, "Expect ')' to end define declaration");
             return;
+        } else {
+            try self.statement();
         }
-        try self.statement();
-        try self.consume(.RightParen, "Expect ')' to end statement");
+
+        try self.consume(.Semicolon, "Expect ';' after declaration");
     }
 
     fn letDeclaration(self: *Self) !void {
@@ -354,11 +348,7 @@ pub const Compiler = struct {
             try self.consume(.RightSquare, "Expect ']' after parameter list");
         }
 
-        try self.consume(.LeftParen, "Expect '(' to start block");
-
-        while (!self.match(.Eof) and !self.match(.RightParen)) {
-            try self.declaration();
-        }
+        try self.block();
 
         const func = try self.closeCompiler();
         const index = try self.makeConstant(Value.fromObject(&func.object));
@@ -374,6 +364,14 @@ pub const Compiler = struct {
             try self.chunk().writeOpByte(.Function, index);
             // HACK
             try self.defineVariable(identifier);
+        }
+    }
+
+    fn block(self: *Self) !void {
+        try self.consume(.LeftCurly, "Expect '{' to start block");
+
+        while (!self.match(.Eof) and !self.match(.RightCurly)) {
+            try self.declaration();
         }
     }
 
@@ -394,16 +392,19 @@ pub const Compiler = struct {
 
     fn ifStmt(self: *Self) CompilerErr!void {
         self.advance();
-        try self.expression();
+        try self.groupedExpression();
 
         const falseLocation = try self.chunk().writeJump(.JumpNot);
-        try self.statement();
-        const trueLocation = try self.chunk().writeJump(.Jump);
+        try self.block();
 
-        self.chunk().patchJump(falseLocation);
-        try self.statement();
+        if (self.match(.Else)) {
+            const trueLocation = try self.chunk().writeJump(.Jump);
 
-        self.chunk().patchJump(trueLocation);
+            self.chunk().patchJump(falseLocation);
+            try self.block();
+
+            self.chunk().patchJump(trueLocation);
+        }
     }
 
     fn groupedExpression(self: *Self) !void {
@@ -463,83 +464,68 @@ pub const Compiler = struct {
 
     fn equality(self: *Self) !void {
         const kind = [_]TokenKind{ .Less, .LessEqual, .Greater, .GreaterEqual, .Equal };
+        try self.term();
 
-        if (self.checkAny(&kind)) {
-            while (self.matchAny(&kind)) {
-                const op = self.previous.kind;
-                try self.term();
-                try self.term();
-
-                switch (op) {
-                    .Less => try self.chunk().writeOp(.Less),
-                    .LessEqual => try self.chunk().writeOp(.LessEqual),
-                    .Greater => try self.chunk().writeOp(.Greater),
-                    .GreaterEqual => try self.chunk().writeOp(.GreaterEqual),
-                    .Equal => try self.chunk().writeOp(.Equal),
-                    else => unreachable,
-                }
-            }
-        } else {
+        while (self.matchAny(&kind)) {
+            const op = self.previous.kind;
             try self.term();
+
+            switch (op) {
+                .Less => try self.chunk().writeOp(.Less),
+                .LessEqual => try self.chunk().writeOp(.LessEqual),
+                .Greater => try self.chunk().writeOp(.Greater),
+                .GreaterEqual => try self.chunk().writeOp(.GreaterEqual),
+                .Equal => try self.chunk().writeOp(.Equal),
+                else => unreachable,
+            }
         }
     }
 
     fn term(self: *Self) !void {
-        if (self.check(.Plus) or self.check(.Minus)) {
-            while (self.match(.Plus) or self.match(.Minus)) {
-                const op = self.previous.kind;
-                try self.factor();
-                try self.factor();
-
-                switch (op) {
-                    .Plus => try self.chunk().writeOp(.Add),
-                    .Minus => try self.chunk().writeOp(.Sub),
-                    else => unreachable,
-                }
-            }
-        } else {
+        try self.factor();
+        while (self.match(.Plus) or self.match(.Minus)) {
+            const op = self.previous.kind;
             try self.factor();
+
+            switch (op) {
+                .Plus => try self.chunk().writeOp(.Add),
+                .Minus => try self.chunk().writeOp(.Sub),
+                else => unreachable,
+            }
         }
     }
 
     fn factor(self: *Self) !void {
-        if (self.check(.Star) or self.check(.Slash)) {
-            while (self.match(.Star) or self.match(.Slash)) {
-                const op = self.previous.kind;
-                try self.call();
-                try self.call();
+        try self.call();
 
-                switch (op) {
-                    .Star => try self.chunk().writeOp(.Mul),
-                    .Slash => try self.chunk().writeOp(.Div),
-                    else => unreachable,
-                }
-            }
-        } else {
+        while (self.match(.Star) or self.match(.Slash)) {
+            const op = self.previous.kind;
             try self.call();
+
+            switch (op) {
+                .Star => try self.chunk().writeOp(.Mul),
+                .Slash => try self.chunk().writeOp(.Div),
+                else => unreachable,
+            }
         }
     }
 
     fn call(self: *Self) CompilerErr!void {
-        if (self.match(.Call)) {
-            try self.expression();
+        try self.primary();
 
+        while (self.match(.LeftParen)) {
             // Collect arguments - optional
             // NOTE: Does not use list parse, as it needs to live on the stack
             var count: u32 = 0;
-            if (self.match(.LeftSquare)) {
-                while (!self.match(.RightSquare)) {
-                    try self.primary();
-                    if (count > std.math.maxInt(u8)) {
-                        self.err("Provided too many arguments to function");
-                        return CompilerErr.TooManyArguments;
-                    }
-                    count += 1;
+            while (!self.match(.RightParen)) {
+                try self.expression();
+                if (count > std.math.maxInt(u8)) {
+                    self.err("Provided too many arguments to function");
+                    return CompilerErr.TooManyArguments;
                 }
+                count += 1;
             }
             try self.chunk().writeOpByte(.Call, @intCast(u8, count));
-        } else {
-            try self.primary();
         }
     }
 
