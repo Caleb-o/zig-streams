@@ -1,5 +1,4 @@
 const std = @import("std");
-const mem = std.mem;
 
 pub const TokenKind = enum {
     // Single-character tokens.
@@ -11,6 +10,7 @@ pub const TokenKind = enum {
     RightSquare,
 
     Comma,
+    Dot,
     Dollar,
     Semicolon,
     Plus,
@@ -22,6 +22,8 @@ pub const TokenKind = enum {
     StarStar,
 
     Bang,
+    BangEqual,
+    EqualEqual,
     Greater,
     GreaterEqual,
     Less,
@@ -88,19 +90,16 @@ pub const Lexer = struct {
             return self.makeToken(.Eof);
         }
 
-        var c = self.advance();
+        return switch (self.advance()) {
+            'a'...'z', 'A'...'Z', '_' => self.identifier(),
+            '0'...'9' => self.number(),
 
-        if (isAlpha(c)) return self.identifier();
-        if (isDigit(c)) return self.number();
-
-        return switch (c) {
             '{' => self.makeToken(.LeftCurly),
             '}' => self.makeToken(.RightCurly),
             '(' => self.makeToken(.LeftParen),
             ')' => self.makeToken(.RightParen),
             '[' => self.makeToken(.LeftSquare),
             ']' => self.makeToken(.RightSquare),
-            ',' => self.makeToken(.Comma),
 
             '+' => self.makeToken(.Plus),
             '-' => self.makeToken(.Minus),
@@ -110,8 +109,10 @@ pub const Lexer = struct {
             ';' => self.makeToken(.Semicolon),
 
             '$' => self.makeToken(.Dollar),
-            '!' => self.makeToken(.Bang),
-            '=' => self.makeToken(.Equal),
+            ',' => self.makeToken(.Comma),
+            '.' => self.makeToken(.Dot),
+            '!' => self.makeToken(if (self.match('=')) .BangEqual else .Bang),
+            '=' => self.makeToken(if (self.match('=')) .EqualEqual else .Equal),
             '<' => self.makeToken(if (self.match('=')) .LessEqual else .Less),
             '>' => self.makeToken(if (self.match('=')) .GreaterEqual else .Greater),
 
@@ -163,17 +164,17 @@ pub const Lexer = struct {
         return true;
     }
 
-    fn isAlpha(c: u8) bool {
+    inline fn isAlpha(c: u8) bool {
         return (c >= 'a' and c <= 'z') or
             (c >= 'A' and c <= 'Z') or
             c == '_';
     }
 
-    fn isDigit(c: u8) bool {
+    inline fn isDigit(c: u8) bool {
         return c >= '0' and c <= '9';
     }
 
-    fn isIdentifier(c: u8) bool {
+    inline fn isIdentifier(c: u8) bool {
         return isAlpha(c) or isDigit(c);
     }
 
@@ -260,10 +261,33 @@ pub const Lexer = struct {
     fn checkKeyword(self: *Self, start: usize, rest: []const u8, kind: TokenKind) TokenKind {
         if (self.current != start + rest.len) return .Identifier;
 
-        if (mem.eql(u8, self.start[start..self.current], rest)) {
+        if (std.mem.eql(u8, self.start[start..self.current], rest)) {
             return kind;
         }
 
         return .Identifier;
     }
 };
+
+// ====== TESTS
+const expect = std.testing.expect;
+
+test "Valid tokens" {
+    const src =
+        \\// Operators
+        \\+ - * / ** ! % $
+        \\= == < <= > >= !=
+        \\{} () []
+        \\; . ,
+        \\// Keywords
+        \\define let global if else return
+        \\// Literals
+        \\100 2.3 'Hello' "World"
+        \\true false nil
+    ;
+    var lexer = Lexer.init(src);
+    var token = lexer.getToken();
+    while (token.kind != .Eof) : (token = lexer.getToken()) {
+        try expect(token.kind != .Error);
+    }
+}

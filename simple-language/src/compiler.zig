@@ -142,10 +142,6 @@ pub const Compiler = struct {
         };
     }
 
-    pub fn deinit(self: *Self) void {
-        self.innerArena.deinit();
-    }
-
     pub fn compile(self: *Self) CompilerErr!*Function {
         var scope = try self.openCompiler(
             "script",
@@ -404,6 +400,8 @@ pub const Compiler = struct {
             try self.block();
 
             self.chunk().patchJump(trueLocation);
+        } else {
+            self.chunk().patchJump(falseLocation);
         }
     }
 
