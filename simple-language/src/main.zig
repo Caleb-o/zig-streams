@@ -4,6 +4,7 @@ const Arena = std.heap.ArenaAllocator;
 
 const Compiler = @import("compiler.zig").Compiler;
 const VM = @import("vm.zig").VM;
+const lang = @import("lang.zig");
 
 pub fn main() !void {
     var arena = Arena.init(std.heap.page_allocator);
@@ -21,24 +22,7 @@ pub fn main() !void {
     const file_contents = try readFile(allocator, args[1]);
     std.debug.print("Loaded file '{s}'\n", .{args[1]});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const galloc = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked == .leak) std.debug.panic("LEAKED\n", .{});
-    }
-
-    var vm = VM.create();
-    try vm.init(allocator, galloc);
-    defer vm.deinit();
-
-    var compiler = Compiler.init(file_contents, &vm, allocator);
-    var func = compiler.compile() catch |err| {
-        std.debug.print("Compiler Error: {s}\n", .{@errorName(err)});
-        return;
-    };
-
-    try vm.start(func);
+    try lang.compileAndRun(arena, file_contents);
 }
 
 fn readFile(allocator: Allocator, file_name: []const u8) ![]u8 {

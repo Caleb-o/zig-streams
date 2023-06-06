@@ -600,5 +600,45 @@ pub const Compiler = struct {
 
 // ====== TESTS
 const expect = std.testing.expect;
+const ByteBuilder = @import("bytebuilder.zig").ByteBuilder;
+const lang = @import("lang.zig");
 
-test "Simple Expressions" {}
+fn getFunctionBytes(arena: Allocator, source: []const u8) ![]const u8 {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const galloc = gpa.allocator();
+    defer _ = gpa.deinit();
+
+    var vm = VM.create();
+    try vm.init(arena, galloc);
+    defer vm.deinit();
+
+    const maybeFunc = lang.compile(arena, &vm, source);
+    if (maybeFunc) |func| {
+        var bytes = try arena.alloc(u8, func.chunk.code.items.len);
+        std.mem.copyForwards(u8, bytes, func.chunk.code.items);
+        return bytes;
+    }
+
+    return error.NoFunction;
+}
+
+test "Simple Expressions" {
+    if (!debug.testable()) {
+        return error.SkipZigTest;
+    }
+    const source = "1 + 2 * 3;";
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
+    var bb = ByteBuilder.init(allocator);
+    defer bb.deinit();
+
+    const bytes = try getFunctionBytes(allocator, source);
+    try expect(std.mem.eql(
+        u8,
+        bytes,
+        bb.constantByte(0).constantByte(1).constantByte(2).mul().add().returnNil().bytes(),
+    ));
+}
