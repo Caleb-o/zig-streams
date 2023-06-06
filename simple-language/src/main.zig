@@ -22,7 +22,7 @@ pub fn main() !void {
     const file_contents = try readFile(allocator, args[1]);
     std.debug.print("Loaded file '{s}'\n", .{args[1]});
 
-    try lang.compileAndRun(arena, file_contents);
+    try lang.compileAndRun(allocator, file_contents);
 }
 
 fn readFile(allocator: Allocator, file_name: []const u8) ![]u8 {

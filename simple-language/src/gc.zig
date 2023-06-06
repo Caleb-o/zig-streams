@@ -25,15 +25,6 @@ pub const Generation = struct {
         self.head = null;
     }
 
-    pub inline fn resetMark(self: *Self) void {
-        var maybeObject = self.head;
-
-        while (maybeObject) |object| {
-            object.marked = false;
-            maybeObject = object.next;
-        }
-    }
-
     pub fn append(self: *Self, obj: *Object) void {
         obj.next = self.head;
         self.head = obj;
