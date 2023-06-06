@@ -604,12 +604,8 @@ const ByteBuilder = @import("bytebuilder.zig").ByteBuilder;
 const lang = @import("lang.zig");
 
 fn getFunctionBytes(arena: Allocator, source: []const u8) ![]const u8 {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const galloc = gpa.allocator();
-    defer _ = gpa.deinit();
-
     var vm = VM.create();
-    try vm.init(arena, galloc);
+    try vm.init(arena, arena);
     defer vm.deinit();
 
     const maybeFunc = lang.compile(arena, &vm, source);
@@ -628,7 +624,7 @@ test "Simple Expressions" {
     }
     const source = "1 + 2 * 3;";
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     const allocator = arena.allocator();
     defer arena.deinit();
 
