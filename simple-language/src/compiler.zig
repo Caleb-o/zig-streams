@@ -175,12 +175,7 @@ pub const Compiler = struct {
     }
 
     fn closeCompiler(self: *Self) !*Function {
-        if (self.func.depth > 0 and self.chunk().code.items.len > 0) {
-            // _ = self.chunk().code.pop();
-            try self.chunk().writeOp(.Return);
-        } else {
-            try self.chunk().writeReturn();
-        }
+        try self.chunk().writeReturn();
 
         const func = try self.func.end(self.vm);
         if (self.func.enclosing) |enclosing| {
@@ -289,16 +284,16 @@ pub const Compiler = struct {
     fn declaration(self: *Self) !void {
         if (self.match(.Let)) {
             try self.letDeclaration();
+            try self.consume(.Semicolon, "Expect ';' after let declaration");
         } else if (self.match(.Global)) {
             try self.globalDeclaration();
+            try self.consume(.Semicolon, "Expect ';' after global declaration");
         } else if (self.match(.Define)) {
             try self.defineDeclaration();
-            return;
         } else {
             try self.statement();
+            try self.consume(.Semicolon, "Expect ';' after statement");
         }
-
-        try self.consume(.Semicolon, "Expect ';' after declaration");
     }
 
     fn letDeclaration(self: *Self) !void {
@@ -412,6 +407,7 @@ pub const Compiler = struct {
         if (self.check(.Semicolon)) {
             try self.chunk().writeReturn();
         } else {
+            try self.expression();
             try self.chunk().writeOp(.Return);
         }
     }
