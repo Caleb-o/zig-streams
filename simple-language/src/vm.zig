@@ -97,10 +97,10 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.cleanupWithGC();
+        self.gc.deinit() catch unreachable;
 
-        self.greyList.deinit();
         self.frames.deinit();
+        self.greyList.deinit();
         self.strings.deinit();
         self.globals.deinit();
     }
@@ -124,6 +124,7 @@ pub const VM = struct {
 
     fn defineNatives(self: *Self) !void {
         try self.defineNative("clock", 0, NativeFns.clock);
+        try self.defineNative("gcCollect", 0, NativeFns.collectGarbage);
     }
 
     fn defineNative(self: *Self, identifier: []const u8, arity: u8, function: objects.ZigNativeFn) !void {
@@ -136,18 +137,9 @@ pub const VM = struct {
         try self.globals.put(identifier, Value.fromObject(&func.object));
     }
 
-    fn cleanupWithGC(self: *Self) void {
-        self.stack.clearRetainingCapacity();
-        self.frames.clearRetainingCapacity();
-        self.greyList.clearRetainingCapacity();
-        self.strings.clearRetainingCapacity();
-        self.globals.clearRetainingCapacity();
-
-        self.gc.deinit() catch unreachable;
-    }
-
-    fn runtimeError(self: *Self, msg: []const u8) void {
+    pub fn runtimeError(self: *Self, msg: []const u8) void {
         @setCold(true);
+        self.running = false;
 
         const frame = self.currentFrame();
         _ = frame;
@@ -169,7 +161,7 @@ pub const VM = struct {
         }
     }
 
-    fn runtimeErrorAlloc(self: *Self, comptime fmt: []const u8, args: anytype) !void {
+    pub fn runtimeErrorAlloc(self: *Self, comptime fmt: []const u8, args: anytype) !void {
         @setCold(true);
         const msg = try std.fmt.allocPrint(self.arena, fmt, args);
         self.runtimeError(msg);
@@ -202,7 +194,7 @@ pub const VM = struct {
         }
 
         const args = self.stack.items[self.stack.items.len - argCount ..];
-        const result = function.function(args);
+        const result = function.function(self, args);
 
         try self.stack.resize(self.stack.items.len - 1 - argCount);
 

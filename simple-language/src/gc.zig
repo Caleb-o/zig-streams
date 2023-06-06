@@ -21,22 +21,43 @@ pub const Generation = struct {
         return .{ .head = null, .vm = vm };
     }
 
+    pub fn deinit(self: *Self) !void {
+        var maybeObject = self.head;
+
+        while (maybeObject) |object| {
+            object.marked = false;
+            maybeObject = object.next;
+        }
+
+        try self.sweep();
+    }
+
     pub inline fn reset(self: *Self) void {
         self.head = null;
     }
 
-    pub fn append(self: *Self, obj: *Object) void {
+    pub inline fn append(self: *Self, obj: *Object) void {
         obj.next = self.head;
         self.head = obj;
     }
 
-    pub fn appendGeneration(self: *Self, other: *Self) void {
+    pub fn appendGeneration(self: *Self, other: *Self) usize {
         var maybeObject = other.head;
+        var count: usize = 0;
 
         while (maybeObject) |object| {
             self.append(object);
             maybeObject = object.next;
+            count += 1;
+
+            if (debug.log_gc) {
+                std.debug.print("-- Moving object: ", .{});
+                object.print();
+                std.debug.print("\n", .{});
+            }
         }
+
+        return count;
     }
 
     pub fn sweep(self: *Self) !void {
@@ -57,6 +78,11 @@ pub const Generation = struct {
                     self.head = maybeObject;
                 }
 
+                if (debug.log_gc) {
+                    std.debug.print("-- Freeing: ", .{});
+                    unreached.print();
+                    std.debug.print("\n", .{});
+                }
                 unreached.deinit(self.vm);
             }
         }
@@ -91,8 +117,8 @@ pub const GC = struct {
     }
 
     pub fn deinit(self: *Self) !void {
-        self.generationCount = GENERATION_CHECK;
-        try self.collectGarbage();
+        try self.young.deinit();
+        try self.old.deinit();
     }
 
     pub fn allocator(self: *Self) Allocator {
@@ -114,7 +140,7 @@ pub const GC = struct {
     ) ?[*]u8 {
         const self = @ptrCast(*Self, @alignCast(@alignOf(Self), ctx));
         if ((self.bytesAllocated + n > self.nextSweep) or debug.stress_gc) {
-            self.collectGarbage() catch |err| {
+            _ = self.collectGarbage() catch |err| {
                 std.debug.print("GC Error: '{s}'\n", .{@errorName(err)});
                 std.os.exit(1);
             };
@@ -138,7 +164,7 @@ pub const GC = struct {
         const self = @ptrCast(*Self, @alignCast(@alignOf(Self), ctx));
         if (new_len > buf.len) {
             if ((self.bytesAllocated + (new_len - buf.len) > self.nextSweep) or debug.stress_gc) {
-                self.collectGarbage() catch |err| {
+                _ = self.collectGarbage() catch |err| {
                     std.debug.print("GC Error: '{s}'\n", .{@errorName(err)});
                     std.os.exit(1);
                 };
@@ -173,10 +199,11 @@ pub const GC = struct {
         }
     }
 
-    pub fn collectGarbage(self: *Self) !void {
+    pub fn collectGarbage(self: *Self) !u32 {
         if (debug.log_gc) {
             std.debug.print("-- gc begin\n", .{});
         }
+        const beforeClear = self.bytesAllocated;
 
         try self.markRoots();
         try self.traceReferences();
@@ -198,14 +225,20 @@ pub const GC = struct {
         }
 
         // Append remaining of young generation to old generation and reset
-        self.old.appendGeneration(&self.young);
-        self.young.reset();
+        // const movedItems = self.old.appendGeneration(&self.young);
+        // self.young.reset();
 
         self.vm.greyList.clearRetainingCapacity();
 
         if (debug.log_gc) {
+            // std.debug.print("Moved {d} item(s) to old generation\n", .{
+            //     movedItems,
+            // });
+
             std.debug.print("-- gc end\n", .{});
         }
+
+        return @intCast(u32, beforeClear - self.bytesAllocated);
     }
 
     fn markObject(self: *Self, obj: *Object) !void {
@@ -215,7 +248,7 @@ pub const GC = struct {
         try self.vm.greyList.append(obj);
 
         if (debug.log_gc) {
-            std.debug.print("marked: '", .{});
+            std.debug.print("-- Marked: '", .{});
             obj.print();
             std.debug.print("'\n", .{});
         }
@@ -242,12 +275,16 @@ pub const GC = struct {
             try self.markObject(&frame.function.object);
         }
 
-        for (self.vm.globals.values()) |*value| {
-            try self.markValue(value);
+        if (self.vm.globals.count() > 0) {
+            for (self.vm.globals.values()) |*value| {
+                try self.markValue(value);
+            }
         }
 
-        for (self.vm.strings.values()) |string| {
-            try self.markObject(&string.object);
+        if (self.vm.strings.count() > 0) {
+            for (self.vm.strings.values()) |string| {
+                try self.markObject(&string.object);
+            }
         }
     }
 
@@ -259,7 +296,8 @@ pub const GC = struct {
 
     fn blackenObject(self: *Self, obj: *Object) !void {
         switch (obj.kind) {
-            .String => try self.markObject(obj),
+            .String, .NativeFunction => {},
+
             .Function => {
                 const function = obj.asFunction();
                 try self.markObject(&function.identifier.object);
@@ -273,7 +311,7 @@ pub const GC = struct {
                     }
                 }
             },
-            else => unreachable,
+            // else => std.debug.panic("{s}\n", .{@tagName(obj.kind)}),
         }
     }
 

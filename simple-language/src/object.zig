@@ -28,8 +28,8 @@ pub const Object = struct {
             .next = vm.gc.young.head,
         };
 
-        vm.gc.young.head = &ptr.object;
-        return &ptr.object;
+        vm.gc.young.append(&ptr.object);
+        return vm.gc.young.head.?;
     }
 
     pub fn deinit(self: *Self, vm: *VM) void {
@@ -204,7 +204,7 @@ pub const List = struct {
     }
 };
 
-pub const ZigNativeFn = *const fn (args: []Value) Value;
+pub const ZigNativeFn = *const fn (vm: *VM, args: []const Value) Value;
 
 pub const NativeFunction = struct {
     object: Object,
