@@ -207,7 +207,6 @@ pub const GC = struct {
         }
 
         // Append remaining of young generation to old generation and reset
-        self.young.resetMark();
         self.old.appendGeneration(&self.young);
         self.young.reset();
 
