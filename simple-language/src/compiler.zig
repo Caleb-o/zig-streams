@@ -635,6 +635,12 @@ test "Simple Expressions" {
     try expect(std.mem.eql(
         u8,
         bytes,
-        bb.constantByte(0).constantByte(1).constantByte(2).mul().add().returnNil().bytes(),
+        bb.constantByte(0)
+            .constantByte(1)
+            .constantByte(2)
+            .mul()
+            .add()
+            .returnNil()
+            .bytes(),
     ));
 }

@@ -195,10 +195,6 @@ pub const GC = struct {
         }
         try self.young.sweep();
 
-        // Append remaining of young generation to old generation and reset
-        self.old.appendGeneration(&self.young);
-        self.young.reset();
-
         // Increment and check if old generation should be swept
         self.generationCount += 1;
         if (self.generationCount >= GENERATION_CHECK) {
@@ -207,10 +203,13 @@ pub const GC = struct {
             }
 
             try self.old.sweep();
-            self.old.resetMark();
-
             self.generationCount = 0;
         }
+
+        // Append remaining of young generation to old generation and reset
+        self.old.appendGeneration(&self.young);
+        self.old.resetMark();
+        self.young.reset();
 
         self.vm.greyList.clearRetainingCapacity();
 
