@@ -11,13 +11,79 @@ const Object = objects.Object;
 const ObjectKind = objects.ObjectKind;
 const StringMap = std.AutoArrayHashMap(u32, *objects.String);
 
+pub const Generation = struct {
+    head: ?*Object,
+    vm: *VM,
+
+    const Self = @This();
+
+    pub fn create(vm: *VM) Self {
+        return .{ .head = null, .vm = vm };
+    }
+
+    pub inline fn reset(self: *Self) void {
+        self.head = null;
+    }
+
+    pub inline fn resetMark(self: *Self) void {
+        var maybeObject = self.head;
+
+        while (maybeObject) |object| {
+            object.marked = false;
+            maybeObject = object.next;
+        }
+    }
+
+    pub fn append(self: *Self, obj: *Object) void {
+        obj.next = self.head;
+        self.head = obj;
+    }
+
+    pub fn appendGeneration(self: *Self, other: *Self) void {
+        var maybeObject = other.head;
+
+        while (maybeObject) |object| {
+            self.append(object);
+            maybeObject = object.next;
+        }
+    }
+
+    pub fn sweep(self: *Self) !void {
+        var previous: ?*Object = null;
+        var maybeObject = self.head;
+
+        while (maybeObject) |obj| {
+            if (obj.marked) {
+                obj.marked = false;
+                previous = obj;
+                maybeObject = obj.next;
+            } else {
+                const unreached = obj;
+                maybeObject = obj.next;
+                if (previous) |prev| {
+                    prev.next = maybeObject;
+                } else {
+                    self.head = maybeObject;
+                }
+
+                unreached.deinit(self.vm);
+            }
+        }
+    }
+};
+
 pub const GC = struct {
     inner: Allocator,
     vm: *VM,
     bytesAllocated: usize,
     nextSweep: usize,
 
+    generationCount: u8,
+    young: Generation,
+    old: Generation,
+
     const SWEEP_FACTOR: usize = 2;
+    const GENERATION_CHECK: u8 = 3;
 
     const Self = @This();
 
@@ -27,7 +93,15 @@ pub const GC = struct {
             .vm = vm,
             .bytesAllocated = 0,
             .nextSweep = 1024 * 1024,
+            .generationCount = 0,
+            .young = Generation.create(vm),
+            .old = Generation.create(vm),
         };
+    }
+
+    pub fn deinit(self: *Self) !void {
+        self.generationCount = GENERATION_CHECK;
+        try self.collectGarbage();
     }
 
     pub fn allocator(self: *Self) Allocator {
@@ -115,7 +189,30 @@ pub const GC = struct {
 
         try self.markRoots();
         try self.traceReferences();
-        try self.sweep();
+
+        if (debug.log_gc) {
+            std.debug.print("sweeping young generation\n", .{});
+        }
+        try self.young.sweep();
+
+        // Append remaining of young generation to old generation and reset
+        self.old.appendGeneration(&self.young);
+        self.young.reset();
+
+        // Increment and check if old generation should be swept
+        self.generationCount += 1;
+        if (self.generationCount >= GENERATION_CHECK) {
+            if (debug.log_gc) {
+                std.debug.print("sweeping old generation\n", .{});
+            }
+
+            try self.old.sweep();
+            self.old.resetMark();
+
+            self.generationCount = 0;
+        }
+
+        self.vm.greyList.clearRetainingCapacity();
 
         if (debug.log_gc) {
             std.debug.print("-- gc end\n", .{});
@@ -194,29 +291,6 @@ pub const GC = struct {
     fn traceReferences(self: *Self) !void {
         for (self.vm.greyList.items) |grey| {
             try self.blackenObject(grey);
-        }
-    }
-
-    fn sweep(self: *Self) !void {
-        var previous: ?*Object = null;
-        var maybeObject = self.vm.objects;
-
-        while (maybeObject) |obj| {
-            if (obj.marked) {
-                obj.marked = false;
-                previous = obj;
-                maybeObject = obj.next;
-            } else {
-                const unreached = obj;
-                maybeObject = obj.next;
-                if (previous) |prev| {
-                    prev.next = obj;
-                } else {
-                    self.vm.objects = obj;
-                }
-
-                unreached.deinit(self.vm);
-            }
         }
     }
 };

@@ -51,7 +51,6 @@ const CallFrame = struct {
 pub const VM = struct {
     arena: Allocator,
     allocator: Allocator,
-    objects: ?*Object,
 
     ip: usize,
     running: bool,
@@ -70,7 +69,6 @@ pub const VM = struct {
         return .{
             .arena = undefined,
             .allocator = undefined,
-            .objects = null,
             .ip = 0,
             .running = true,
             .gc = undefined,
@@ -145,7 +143,7 @@ pub const VM = struct {
         self.strings.clearRetainingCapacity();
         self.globals.clearRetainingCapacity();
 
-        self.gc.collectGarbage() catch unreachable;
+        self.gc.deinit() catch unreachable;
     }
 
     fn runtimeError(self: *Self, msg: []const u8) void {

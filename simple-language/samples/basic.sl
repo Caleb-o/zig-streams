@@ -1,9 +1,1 @@
-print $fib (16);
-
-define fib [n] {
-    if (n < 2) {
-        n;
-    } else {
-        (fib (n - 1)) + (fib (n - 2));
-    };
-}
+print [1, 2, 3];

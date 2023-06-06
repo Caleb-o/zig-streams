@@ -179,7 +179,7 @@ pub const Compiler = struct {
             // _ = self.chunk().code.pop();
             try self.chunk().writeOp(.Return);
         } else {
-            try self.chunk().writeOps(.Nil, .Return);
+            try self.chunk().writeReturn();
         }
 
         const func = try self.func.end(self.vm);
@@ -375,6 +375,7 @@ pub const Compiler = struct {
         switch (self.current.kind) {
             .Print => try self.printStmt(),
             .If => try self.ifStmt(),
+            .Return => try self.returnStatement(),
             else => try self.expression(),
         }
         // try self.chunk().writeOp(.Pop);
@@ -383,7 +384,7 @@ pub const Compiler = struct {
     fn printStmt(self: *Self) !void {
         self.advance();
         try self.expression();
-        try self.chunk().writeOps(.Print, .Nil);
+        try self.chunk().writeOp(.Print);
     }
 
     fn ifStmt(self: *Self) CompilerErr!void {
@@ -402,6 +403,16 @@ pub const Compiler = struct {
             self.chunk().patchJump(trueLocation);
         } else {
             self.chunk().patchJump(falseLocation);
+        }
+    }
+
+    fn returnStatement(self: *Self) !void {
+        self.advance();
+
+        if (self.check(.Semicolon)) {
+            try self.chunk().writeReturn();
+        } else {
+            try self.chunk().writeOp(.Return);
         }
     }
 
@@ -443,9 +454,20 @@ pub const Compiler = struct {
     fn listLiteral(self: *Self) !void {
         self.advance();
         var count: usize = 0;
-        while (!self.match(.RightSquare)) {
+
+        if (!self.match(.RightSquare)) {
             try self.expression();
             count += 1;
+
+            while (self.match(.Comma)) {
+                try self.expression();
+                count += 1;
+            }
+
+            try self.consume(
+                .RightSquare,
+                "Expect ']' to end list literal",
+            );
         }
 
         if (count > std.math.maxInt(u8)) {
@@ -453,7 +475,10 @@ pub const Compiler = struct {
             return CompilerErr.TooManyArguments;
         }
 
-        try self.chunk().writeOpByte(.IntoList, @intCast(u8, count));
+        try self.chunk().writeOpByte(.IntoList, @intCast(
+            u8,
+            count,
+        ));
     }
 
     fn expression(self: *Self) !void {
@@ -461,7 +486,13 @@ pub const Compiler = struct {
     }
 
     fn equality(self: *Self) !void {
-        const kind = [_]TokenKind{ .Less, .LessEqual, .Greater, .GreaterEqual, .Equal };
+        const kind = [_]TokenKind{
+            .Less,
+            .LessEqual,
+            .Greater,
+            .GreaterEqual,
+            .Equal,
+        };
         try self.term();
 
         while (self.matchAny(&kind)) {
@@ -523,7 +554,11 @@ pub const Compiler = struct {
                 }
                 count += 1;
             }
-            try self.chunk().writeOpByte(.Call, @intCast(u8, count));
+
+            try self.chunk().writeOpByte(.Call, @intCast(
+                u8,
+                count,
+            ));
         }
     }
 
@@ -532,6 +567,11 @@ pub const Compiler = struct {
             .Dollar => try self.getGlobalIdentifier(),
             .Identifier => try self.getIdentifier(),
             .LeftParen => try self.groupedExpression(),
+            .LeftSquare => try self.listLiteral(),
+
+            .True => try self.chunk().writeOp(.True),
+            .False => try self.chunk().writeOp(.False),
+            .Nil => try self.chunk().writeOp(.Nil),
 
             .Number => {
                 const float = try std.fmt.parseFloat(f32, self.current.lexeme);
@@ -547,16 +587,18 @@ pub const Compiler = struct {
                 self.advance();
             },
 
-            .True => try self.chunk().writeOp(.True),
-            .False => try self.chunk().writeOp(.False),
-            .Nil => try self.chunk().writeOp(.Nil),
-
-            .LeftSquare => try self.listLiteral(),
-
             else => {
-                std.debug.print("Unknown item in expression '{s}'\n", .{self.current.lexeme});
+                std.debug.print(
+                    "Unknown item in expression '{s}'\n",
+                    .{self.current.lexeme},
+                );
                 return CompilerErr.InvalidExpression;
             },
         }
     }
 };
+
+// ====== TESTS
+const expect = std.testing.expect;
+
+test "Simple Expressions" {}

@@ -25,10 +25,10 @@ pub const Object = struct {
         ptr.object = .{
             .kind = kind,
             .marked = false,
-            .next = vm.objects,
+            .next = vm.gc.young.head,
         };
 
-        vm.objects = &ptr.object;
+        vm.gc.young.head = &ptr.object;
         return &ptr.object;
     }
 

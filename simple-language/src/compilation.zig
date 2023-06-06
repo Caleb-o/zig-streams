@@ -75,6 +75,11 @@ pub const Chunk = struct {
         try self.code.append(@enumToInt(op2));
     }
 
+    pub fn writeReturn(self: *Self) !void {
+        try self.code.append(@enumToInt(ByteCode.Nil));
+        try self.code.append(@enumToInt(ByteCode.Return));
+    }
+
     pub fn writeOpByte(self: *Self, op1: ByteCode, op2: u8) !void {
         try self.code.append(@enumToInt(op1));
         try self.code.append(op2);
